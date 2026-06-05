@@ -1,0 +1,108 @@
+# CI for apohara-sealchain.
+#
+# Runs the conformance gate (committed test vectors, no Python required) across
+# Linux/macOS/Windows, plus secret scanning (gitleaks) and dependency policy
+# (cargo-deny).
+#
+# NOTE: the interop test (`tests/interop.rs`) is marked `#[ignore]` because it
+# needs the local probanza Python venv. It is intentionally NOT run in CI and is
+# local-only; `cargo test --workspace` skips ignored tests automatically.
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Check formatting
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (deny warnings)
+        run: cargo clippy --all-targets -- -D warnings
+
+      # Runs the conformance gate (crates/apohara-sealchain-core/tests/conformance.rs).
+      # The interop test is #[ignore] and is skipped here on purpose.
+      - name: Test workspace
+        run: cargo test --workspace
+
+  secrets:
+    name: secrets (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Uses the repo's .gitleaks.toml.
+          GITLEAKS_CONFIG: .gitleaks.toml
+
+  deny:
+    name: deny (cargo-deny)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@v2
+        with:
+          # Uses the repo's deny.toml.
+          command: check
+
+  msrv:
+    # Enforce the workspace MSRV (Cargo.toml `rust-version`). The floor is set
+    # by c2pa 0.85 (1.88); see the comment in Cargo.toml. Keep this pin in sync.
+    name: msrv (1.88)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # rust-toolchain.toml pins `stable` and would override the toolchain this
+      # job installs, masking MSRV regressions. Remove it so the 1.88 toolchain
+      # below is actually used.
+      - name: Drop pinned toolchain override
+        run: rm -f rust-toolchain.toml
+      - name: Install MSRV toolchain
+        uses: dtolnay/rust-toolchain@1.88
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+      - name: cargo check (workspace) on MSRV
+        run: cargo check --workspace --all-targets
+
+  audit:
+    # Vulnerability scan of the dependency tree (c2pa/sigstore are large,
+    # security-sensitive trees). Documented exceptions live in deny.toml and are
+    # mirrored here as --ignore flags. Re-evaluate on each c2pa/sigstore bump.
+    name: audit (cargo-audit)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+      - name: Install cargo-audit
+        run: cargo install cargo-audit --locked
+      - name: Run cargo audit
+        run: |
+          cargo audit \
+            --ignore RUSTSEC-2023-0071 \
+            --ignore RUSTSEC-2024-0370

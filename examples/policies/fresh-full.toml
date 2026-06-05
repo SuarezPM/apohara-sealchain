@@ -1,0 +1,13 @@
+# Fresh full-chain attestation policy.
+#
+# Accept a receipt only if every layer is present AND verified (integrity +
+# authorship + provenance + timestamp + public transparency), and it was sealed
+# within the last year. Demonstrates min_layers + max_age_days alongside an
+# explicit required-layer set.
+#
+#   apohara-sealchain seal model.bin --all
+#   apohara-sealchain verify model.bin model.bin.seal.json --policy examples/policies/fresh-full.toml
+
+require_layers = ["hmac", "ed25519", "c2pa", "tsa", "rekor"]
+min_layers = 5
+max_age_days = 365

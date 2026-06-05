@@ -1,0 +1,32 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "sealchain"
+version = "0.1.0"
+description = "Thin Python SDK that wraps the sealchain CLI for verifiable, tamper-evident artifact receipts."
+readme = "README.md"
+requires-python = ">=3.9"
+license = "MIT OR Apache-2.0"
+authors = [{ name = "Pablo M. Suarez" }]
+keywords = ["sealchain", "c2pa", "provenance", "receipt", "ed25519"]
+
+# No runtime dependencies: this package shells out to the `apohara-sealchain` binary
+# and parses its JSON with the standard library.
+dependencies = []
+
+[project.urls]
+Repository = "https://github.com/SuarezPM/apohara-sealchain"
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["sealchain"]
+
+[tool.pytest.ini_options]
+# Make the in-tree `apohara-sealchain` package importable when running tests without an
+# editable install (e.g. `python3 -m pytest` or `uvx pytest`).
+pythonpath = ["."]
+testpaths = ["tests"]

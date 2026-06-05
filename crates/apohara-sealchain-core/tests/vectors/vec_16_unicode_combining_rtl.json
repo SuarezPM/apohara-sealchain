@@ -1,0 +1,22 @@
+{
+  "payload": {
+    "arabic": "العربية",
+    "astral": "💩😀",
+    "combining": "é",
+    "rtl": "אבג"
+  },
+  "seal": {
+    "ed25519": {
+      "keyId": "default",
+      "sig": "0xda951f7d2eb5945ce64e392eeefb95864d4e33313e0a19118c54fb011c460e6fd48b4d0b84804e0bf39f6004fe77fab38c5e624f8bc61ec54ca70e150de94805"
+    },
+    "hmac": {
+      "alg": "HMAC-SHA256",
+      "keyId": "hmac-default",
+      "sig": "0x3591430a0b433f7e244a5a9382879ca1ed9f98a238b84ba302700babbdca0c32"
+    },
+    "method": "apohara-seal-v1",
+    "preimage": "0x7b226d6574686f64223a2261706f686172612d7365616c2d7631222c227061796c6f6164223a7b22617261626963223a22d8a7d984d8b9d8b1d8a8d98ad8a9222c2261737472616c223a22f09f92a9f09f9880222c22636f6d62696e696e67223a2265cc81222c2272746c223a22d790d791d792227d2c227365616c65644174223a22323032362d30312d30315430303a30303a30302b30303a3030227d",
+    "sealedAt": "2026-01-01T00:00:00+00:00"
+  }
+}

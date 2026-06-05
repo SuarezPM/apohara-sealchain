@@ -1,0 +1,130 @@
+[package]
+name = "apohara-sealchain-core"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+homepage = "https://apohara.dev/sealchain"
+documentation = "https://docs.rs/apohara-sealchain-core"
+readme = "../../README.md"
+description = "Core engine for apohara-sealchain: apohara-seal-v1 receipts (JCS, layers, seal/verify)"
+keywords = ["provenance", "c2pa", "sigstore", "attestation", "mcp"]
+categories = ["cryptography", "authentication"]
+
+# docs.rs builds with no network access. The default `native` feature is fully
+# offline: c2pa uses `rust_native_crypto` (no openssl/network), and the network
+# transparency layers (TSA, Rekor) only *compile* their reqwest/tokio clients —
+# nothing is contacted at build time. We pin the full `native` feature set and a
+# single linux target so the docs match what users get from the default build.
+[package.metadata.docs.rs]
+features = ["native"]
+all-features = false
+targets = ["x86_64-unknown-linux-gnu"]
+
+[features]
+# `native` (default) is the full engine: seal + verify, the keystore, the
+# network transparency layers (TSA, Rekor) and C2PA *emit*. `verify-only` is the
+# wasm32 subset: it pulls ONLY the offline verify path (content, HMAC integrity,
+# Ed25519, C2PA verify) and none of the network/filesystem/OS deps, so the crate
+# compiles to wasm32-unknown-unknown for the in-browser verifier (crates/sealchain-wasm).
+default = ["native"]
+native = [
+    "dep:mime_guess",
+    "dep:rcgen",
+    "dep:pem",
+    "dep:x509-parser",
+    "dep:sigstore-tsa",
+    "dep:sigstore-types",
+    "dep:tokio",
+    "dep:rustls-pki-types",
+    "dep:sigstore-rekor",
+    "dep:sigstore-merkle",
+    "dep:sigstore-crypto",
+    "dep:reqwest",
+    "dep:scrypt",
+    "dep:chacha20poly1305",
+    "dep:rusqlite",
+    "dep:toml",
+    "rand_core/getrandom",
+]
+verify-only = []
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+hex.workspace = true
+sha2.workspace = true
+hmac.workspace = true
+ed25519-dalek.workspace = true
+thiserror.workspace = true
+# Used by the native keystore (OsRng) only; `getrandom` is enabled by the
+# `native` feature so the wasm verify-only build does not pull a wasm RNG it
+# never uses.
+rand_core = { workspace = true, default-features = false }
+chrono.workspace = true
+serde_jcs = "0.2.0"
+# C2PA verify (Reader) is offline and wasm-safe with default-features=false +
+# rust_native_crypto. `file_io` is intentionally NOT enabled: this crate uses
+# only in-memory streams, and file_io pulls openssl/std-fs that would break wasm.
+c2pa = { version = "0.85", default-features = false, features = ["rust_native_crypto"] }
+# Base64 for the Rekor anchor mapping. Always available (no_std-capable, wasm-safe)
+# so the schema/anchor types round-trip in both builds.
+base64 = "0.22"
+
+# --- native-only deps (pulled in by the `native` feature) ---
+# C2PA emit cert/key material (self-signed signer). Verify does not need them.
+rcgen = { version = "0.13", optional = true }
+pem = { version = "3", optional = true }
+# Parse the embedded manifest's signer cert to confirm its SPKI Ed25519 public
+# key equals the seal's public key (signer ≡ authorship) on the native verify
+# path. Native-only: the wasm verify-only build checks validity via the Reader.
+x509-parser = { version = "0.18", optional = true }
+# Artifact MIME guessing for the native seal path.
+mime_guess = { workspace = true, optional = true }
+# `SignatureBytes` is the input type for the TSA client's `timestamp_signature`;
+# sigstore-tsa does not re-export it, so it is needed directly.
+sigstore-types = { version = "0.6.6", optional = true }
+sigstore-tsa = { version = "0.6.6", optional = true }
+# The sigstore-tsa client is async (reqwest). The core is sync, so a private
+# current-thread runtime drives the one network call without leaking async/tokio
+# into the public API. Only the runtime + IO/time drivers are needed.
+tokio = { version = "1", default-features = false, features = ["rt", "net", "time"], optional = true }
+# `VerifyOpts::with_roots` takes `CertificateDer`; needed to pass a trust root
+# into the best-effort TSA certificate-chain check.
+rustls-pki-types = { version = "1.14", optional = true }
+# Rekor v2 transparency layer. `sigstore-rekor` is the DSSE v0.0.2 client
+# (`create_dsse_entry_v2`); `sigstore-merkle` does the RFC 6962 inclusion-proof
+# recompute; `sigstore-crypto` verifies the Ed25519 C2SP checkpoint signature
+# over the full signed-note body. Like TSA, the client is async (reqwest) and is
+# driven on the same private current-thread runtime, so no async leaks out.
+sigstore-rekor = { version = "0.6.6", optional = true }
+sigstore-merkle = { version = "0.6.6", optional = true }
+sigstore-crypto = { version = "0.6.6", optional = true }
+# The Rekor v2 shard exposes `/api/v2/checkpoint` (200) but not the v1 log-info
+# endpoint `sigstore-rekor`'s `get_log_info` hits, so the pre-submit health check
+# is a direct GET. rustls matches `sigstore-rekor`'s default feature (one TLS
+# backend). `json` is unused here but pulled in transitively by sigstore-rekor.
+reqwest = { version = "0.13", default-features = false, features = ["rustls"], optional = true }
+# Passphrase-encrypted keystore at rest (native keystore only). scrypt is the KDF
+# (memory-hard, RFC 7914); chacha20poly1305 provides XChaCha20-Poly1305 AEAD whose
+# decrypt returns an `Err` on a wrong passphrase (auth-tag mismatch), never a panic.
+scrypt = { workspace = true, optional = true }
+chacha20poly1305 = { workspace = true, optional = true }
+# Local receipt index DB (native only). `bundled` (set in the workspace dep)
+# compiles SQLite from source, so no system libsqlite3 is required and the wasm
+# verify-only build never pulls it.
+rusqlite = { workspace = true, optional = true }
+# Attestation policy files (native only): the policy engine parses declarative
+# TOML policies. `deny_unknown_fields` on the Policy struct catches typo'd keys.
+# The wasm verify-only build does not enforce policies, so toml is gated `native`.
+toml = { version = "0.8", optional = true }
+
+[dev-dependencies]
+serde_json.workspace = true
+hex.workspace = true
+tempfile.workspace = true
+# `x509-parser` is pulled in by the default `native` feature (used to parse the
+# signer cert from the manifest and assert its SPKI public key equals the seal's
+# Ed25519 public key — the signer ≡ authorship proof), so no dev entry is needed.

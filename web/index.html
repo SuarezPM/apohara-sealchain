@@ -1,0 +1,109 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <!-- Hard offline posture: no remote origins, no connections. The verifier
+       runs entirely in-page; the CSP makes that auditable. 'wasm-unsafe-eval'
+       is required to instantiate the WebAssembly module. -->
+  <meta http-equiv="Content-Security-Policy"
+        content="default-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; base-uri 'none'; form-action 'none'" />
+  <title>apohara-sealchain — offline receipt verifier</title>
+  <style>
+    :root {
+      --bg: #0d1117; --panel: #161b22; --border: #30363d; --text: #e6edf3;
+      --muted: #8b949e; --ok: #3fb950; --bad: #f85149; --warn: #d29922;
+      --accent: #58a6ff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; background: var(--bg); color: var(--text);
+      font: 15px/1.5 ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+      padding: 2rem 1rem;
+    }
+    main { max-width: 760px; margin: 0 auto; }
+    h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+    .sub { color: var(--muted); margin: 0 0 1.5rem; }
+    .offline-badge {
+      display: inline-block; font-size: .8rem; color: var(--ok);
+      border: 1px solid var(--ok); border-radius: 999px; padding: .1rem .6rem;
+      margin-left: .5rem; vertical-align: middle;
+    }
+    .drop {
+      border: 2px dashed var(--border); border-radius: 10px; padding: 1.25rem;
+      background: var(--panel); margin-bottom: 1rem; transition: border-color .15s;
+    }
+    .drop.dragover { border-color: var(--accent); }
+    .drop h2 { font-size: 1rem; margin: 0 0 .5rem; }
+    .drop label { display: block; color: var(--muted); margin-bottom: .35rem; }
+    .file-row { display: flex; gap: .75rem; align-items: center; flex-wrap: wrap; }
+    .file-name { color: var(--accent); word-break: break-all; }
+    input[type=file] { color: var(--muted); }
+    button {
+      background: var(--accent); color: #0d1117; border: 0; border-radius: 6px;
+      padding: .55rem 1.1rem; font: inherit; font-weight: 600; cursor: pointer;
+    }
+    button:disabled { opacity: .5; cursor: not-allowed; }
+    #results { margin-top: 1.5rem; }
+    .verdict {
+      font-size: 1.1rem; font-weight: 700; padding: .75rem 1rem; border-radius: 8px;
+      margin-bottom: 1rem; border: 1px solid var(--border);
+    }
+    .verdict.ok { color: var(--ok); border-color: var(--ok); }
+    .verdict.bad { color: var(--bad); border-color: var(--bad); }
+    .layer {
+      display: flex; gap: .75rem; align-items: flex-start; padding: .65rem .85rem;
+      border: 1px solid var(--border); border-radius: 8px; margin-bottom: .5rem;
+      background: var(--panel);
+    }
+    .layer .icon { font-size: 1.1rem; line-height: 1.4; }
+    .layer.ok .icon { color: var(--ok); }
+    .layer.bad .icon { color: var(--bad); }
+    .layer.unknown .icon { color: var(--warn); }
+    .layer .body { flex: 1; }
+    .layer .name { font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
+    .layer .reason { color: var(--muted); font-size: .88rem; margin-top: .15rem; }
+    .error { color: var(--bad); padding: .75rem 1rem; border: 1px solid var(--bad); border-radius: 8px; }
+    footer { color: var(--muted); font-size: .8rem; margin-top: 2rem; }
+    a { color: var(--accent); }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>apohara-sealchain receipt verifier <span class="offline-badge">100% offline</span></h1>
+    <p class="sub">
+      Verify a apohara-sealchain receipt and its artifact entirely in your browser.
+      Nothing is uploaded — content, Ed25519, and C2PA are checked locally in WebAssembly.
+    </p>
+
+    <div class="drop" id="drop">
+      <h2>Drop the artifact and its <code>.seal.json</code> here</h2>
+      <div class="file-row">
+        <div>
+          <label>Artifact (any file)</label>
+          <input type="file" id="artifact" />
+          <div class="file-name" id="artifact-name"></div>
+        </div>
+        <div>
+          <label>Receipt (<code>&lt;artifact&gt;.seal.json</code>)</label>
+          <input type="file" id="receipt" accept=".json,application/json" />
+          <div class="file-name" id="receipt-name"></div>
+        </div>
+      </div>
+      <p style="margin:1rem 0 0">
+        <button id="verify" disabled>Verify offline</button>
+      </p>
+    </div>
+
+    <div id="results"></div>
+
+    <footer>
+      Powered by <code>sealchain-wasm</code> (Rust + wasm-bindgen + serde-wasm-bindgen).
+      HMAC is symmetric: its secret key is never in the receipt, so it cannot be
+      checked in the browser — this verifier says so honestly rather than faking a pass.
+    </footer>
+  </main>
+
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

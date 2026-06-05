@@ -1,0 +1,87 @@
+{
+  "schemaVersion": "apohara-trust-profile-v1",
+  "description": "Canonical, machine-readable trust profile for apohara-sealchain (apohara-seal-v1). Single source of truth for: what each layer and combination proves (matrix), the named attestation profiles the policy engine and the transparency dashboard consume (profiles), and the qualified-TSA host allowlist. The human-readable rendering is docs/TRUST-PROFILE.md, which cross-references this file. The crate embeds an identical copy (crates/apohara-sealchain-core/trust-profile.json) via include_str!; a dev-only test asserts the two stay byte-identical.",
+  "layers": {
+    "hmac": "Has this receipt's preimage been altered, given the shared secret?",
+    "ed25519": "Did the holder of this private key author this seal?",
+    "tsa": "Did this content exist before a point in time, according to that TSA?",
+    "rekor": "Is this seal publicly recorded in an append-only transparency log?",
+    "c2pa": "Is there a provenance manifest bound to this payload?"
+  },
+  "profiles": {
+    "offline-basic": {
+      "title": "Offline basic",
+      "description": "Local integrity + authorship + provenance, fully offline. The default seal.",
+      "requireLayers": ["hmac", "ed25519", "c2pa"],
+      "minLayers": 3,
+      "requireQualifiedTsa": false
+    },
+    "transparency": {
+      "title": "Public transparency",
+      "description": "Authorship plus a public, append-only Sigstore Rekor v2 transparency-log record.",
+      "requireLayers": ["ed25519", "rekor"],
+      "minLayers": 2,
+      "requireQualifiedTsa": false
+    },
+    "legal-grade": {
+      "title": "Legal-grade timestamp",
+      "description": "Authorship plus a qualified eIDAS QTSP timestamp (legal weight under eIDAS Art. 42). Requires pointing --tsa at a QTSP you are authorised to use; the default TSA is NOT qualified.",
+      "requireLayers": ["ed25519", "tsa"],
+      "minLayers": 2,
+      "requireQualifiedTsa": true
+    },
+    "full": {
+      "title": "Full five-layer",
+      "description": "Every layer present and independently re-verified: integrity + authorship + timestamp + public transparency + provenance.",
+      "requireLayers": ["hmac", "ed25519", "c2pa", "tsa", "rekor"],
+      "minLayers": 5,
+      "requireQualifiedTsa": false
+    }
+  },
+  "matrix": [
+    {
+      "combination": "hmac",
+      "proves": "Local integrity: anyone holding the shared secret can confirm the receipt's preimage is unmodified.",
+      "doesNotProve": "Authorship (anyone with the secret can forge it), existence-in-time, public record, provenance.",
+      "trustAnchor": "The shared HMAC secret (symmetric; the verifier must already hold it)."
+    },
+    {
+      "combination": "hmac+ed25519",
+      "proves": "Authorship by the key holder: the seal was signed by whoever controls that Ed25519 private key. The public key is embedded, so verification is offline.",
+      "doesNotProve": "Who that key holder is (no identity/PKI binding), when it was signed, public record, provenance.",
+      "trustAnchor": "The Ed25519 keypair (plus out-of-band trust that the embedded public key is really the claimed author's)."
+    },
+    {
+      "combination": "hmac+ed25519+tsa",
+      "proves": "Existence-before-a-point-in-time as asserted by a non-qualified TSA (e.g. FreeTSA/Sigstore): the hmac.sig||ed25519.sig binding was timestamped and the imprint is re-checked offline.",
+      "doesNotProve": "A legally-qualified/court-admissible timestamp; identity; public record; provenance. A free TSA is credible but not eIDAS-qualified.",
+      "trustAnchor": "The TSA's signing certificate (imprint is the pass bar; chain validation is best-effort: 'Valid, not Trusted')."
+    },
+    {
+      "combination": "hmac+ed25519+tsa(qtsp)",
+      "proves": "A qualified timestamp: existence-before-time with legal effect under eIDAS Art. 42, recognised across the EU. Same offline imprint check; the legal weight comes from the QTSP.",
+      "doesNotProve": "Authorship identity beyond the Ed25519 key, public record, provenance. It does not turn an unqualified key into a qualified signature.",
+      "trustAnchor": "A qualified eIDAS TSA under your own QTSP account. GATED: needs your credentials."
+    },
+    {
+      "combination": "hmac+ed25519+rekor",
+      "proves": "Public, append-only record: a DSSE-signed in-toto Statement anchoring the canonical preimage was admitted to a Sigstore Rekor v2 log, with an offline-verifiable inclusion proof + signed checkpoint.",
+      "doesNotProve": "Legal qualification, identity (the DSSE is signed by the seal key, not an OIDC identity), provenance. Transparency is not qualification.",
+      "trustAnchor": "The Rekor log's public key, pinned with provenance in packaging/rekor-shards.json (verified offline)."
+    },
+    {
+      "combination": "hmac+ed25519+c2pa",
+      "proves": "A provenance manifest is cryptographically bound to the payload (sidecar JUMBF, or in-file hard binding with --embed): tooling can show the claimed origin/history.",
+      "doesNotProve": "A third-party-trust-anchored credential: in v0.1 the manifest is self-signed with the seal's Ed25519 key (trust check disabled: 'Valid, not Trusted'). Not legal qualification, not identity.",
+      "trustAnchor": "A real C2PA Signer certificate for production provenance (v0.1 uses a self-signed cert)."
+    },
+    {
+      "combination": "hmac+ed25519+c2pa+tsa+rekor",
+      "proves": "The union of all of the above, produced real-or-abort under --all: integrity + authorship + timestamp + public transparency + provenance, each independently re-checked at verify time.",
+      "doesNotProve": "Anything no single layer proves: notably legal-grade timestamping unless the TSA is a qualified eIDAS QTSP, and third-party identity binding. --all uses the default (non-qualified) TSA.",
+      "trustAnchor": "All anchors above; for legal weight you must additionally point --tsa at an eIDAS QTSP."
+    }
+  ],
+  "knownQualifiedTsaHosts": ["timestamp.actalis.it"],
+  "qualifiedTsaHonesty": "knownQualifiedTsaHosts is a NON-EXHAUSTIVE convenience allowlist of TSA hostnames operated by providers that appear on EU Trusted Lists as qualified trust service providers offering qualified timestamping. Matching it proves only that a receipt's recorded TSA authority host is on this list; it does NOT cryptographically prove the eIDAS qualification of any individual token. The authoritative source is the EU Trusted List. Operators should extend this for their own QTSP via a policy's require_tsa_authority_in, which overrides this allowlist."
+}

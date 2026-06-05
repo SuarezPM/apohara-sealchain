@@ -1,0 +1,9 @@
+{
+  "ed25519_key_id": "default",
+  "ed25519_private_pem": "-----BEGIN PRIVATE KEY-----\nMC4CAQAwBQYDK2VwBCIEIAABAgMEBQYHCAkKCwwNDg8QERITFBUWFxgZGhscHR4f\n-----END PRIVATE KEY-----\n",
+  "ed25519_public_pem": "-----BEGIN PUBLIC KEY-----\nMCowBQYDK2VwAyEAA6EHv/POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg=\n-----END PUBLIC KEY-----\n",
+  "hmac_key_hex": "7365616c636861696e2d746573742d686d61632d6b65792d66697865642d303121",
+  "hmac_key_id": "hmac-default",
+  "note": "FIXED NON-SECRET test keys for conformance vectors only.",
+  "sealed_at": "2026-01-01T00:00:00+00:00"
+}

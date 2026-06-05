@@ -1,0 +1,14 @@
+{
+  "name": "apohara-sealchain",
+  "version": "0.1.0",
+  "description": "Verifiable, tamper-evident receipts for AI artifacts. Exposes seal_artifact, verify_receipt, and show_chain over MCP.",
+  "author": "Pablo M. Suarez",
+  "homepage": "https://github.com/SuarezPM/apohara-sealchain",
+  "license": "MIT OR Apache-2.0",
+  "mcpServers": {
+    "apohara-sealchain": {
+      "command": "apohara-sealchain",
+      "args": ["mcp"]
+    }
+  }
+}

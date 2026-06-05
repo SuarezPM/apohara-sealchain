@@ -1,0 +1,21 @@
+# Legal-grade attestation policy (eIDAS-oriented).
+#
+# Accept a receipt only if it carries a verified author signature AND a verified
+# RFC-3161 timestamp whose authority host is a known qualified eIDAS QTSP.
+#
+# HONESTY (rule #1): `require_qualified_tsa` is a HOST-ALLOWLIST match against the
+# recorded `seal.tsa.authority`. It does NOT cryptographically prove eIDAS
+# qualification of the token — that legal weight comes from using a real QTSP you
+# are authorised to use (see docs/TRUST-PROFILE.md). The default apohara-sealchain TSA is
+# NOT qualified; point `--tsa` at a QTSP when sealing for legal-grade use.
+#
+#   apohara-sealchain seal contract.pdf --tsa https://timestamp.actalis.it
+#   apohara-sealchain verify contract.pdf contract.pdf.seal.json --policy examples/policies/legal-grade.toml
+
+require_layers = ["ed25519", "tsa"]
+require_qualified_tsa = true
+
+# Override the canonical QTSP allowlist with your own provider's TSA host(s).
+# When set, this replaces packaging/trust-profile.json's knownQualifiedTsaHosts
+# for this check. Uncomment and edit for your QTSP:
+# require_tsa_authority_in = ["timestamp.actalis.it"]

@@ -1,0 +1,44 @@
+# cargo-deny policy. Run: cargo deny check
+[licenses]
+allow = [
+    "MIT",
+    "Apache-2.0",
+    "Apache-2.0 WITH LLVM-exception",
+    "BSD-3-Clause",
+    "BSD-2-Clause",
+    "ISC",
+    "Unicode-3.0",
+    "Zlib",
+    "CC0-1.0",
+    # webpki-roots ships the Mozilla CA bundle under CDLA-Permissive-2.0.
+    "CDLA-Permissive-2.0",
+]
+confidence-threshold = 0.9
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+# Workspace-internal crates depend on each other by path; those are not the
+# unpinned-public-dependency risk `wildcards` guards against.
+allow-wildcard-paths = true
+
+[advisories]
+yanked = "deny"
+# Documented advisory exceptions. Both are TRANSITIVE through c2pa 0.85 (our
+# C2PA sidecar layer) and have no upgrade path today. Re-evaluate on each c2pa
+# bump. Tracked by the cargo-audit CI job, which ignores the same IDs.
+ignore = [
+    # rsa 0.9.x "Marvin Attack" timing side-channel (medium, 5.9). No fixed
+    # release exists upstream. Reaches us only via c2pa -> rsa, used for C2PA
+    # manifest signing paths we do not exercise with attacker-controlled
+    # timing. Accepted until rsa ships a fix and c2pa adopts it.
+    "RUSTSEC-2023-0071",
+    # proc-macro-error 1.0 unmaintained (build-time proc-macro only, no runtime
+    # exposure). Pulled in via c2pa -> iref -> static-regular-grammar. Accepted
+    # until the dependency chain migrates off it.
+    "RUSTSEC-2024-0370",
+]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"

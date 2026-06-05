@@ -1,0 +1,15 @@
+{
+  "payload": {
+    "msg": "🚀 末 א"
+  },
+  "seal": {
+    "hmac": {
+      "alg": "HMAC-SHA256",
+      "keyId": "hmac-default",
+      "sig": "0x9f1e58804cbfdce008295c1dc09e3c94e2e644873b1fb9a327c8ab76ca90f1dc"
+    },
+    "method": "apohara-seal-v1",
+    "preimage": "0x7b226d6574686f64223a2261706f686172612d7365616c2d7631222c227061796c6f6164223a7b226d7367223a22f09f9a8020e69cab20d790227d2c227365616c65644174223a22323032362d30312d30315430303a30303a30302b30303a3030227d",
+    "sealedAt": "2026-01-01T00:00:00+00:00"
+  }
+}

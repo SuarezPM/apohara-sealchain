@@ -1,0 +1,13 @@
+# Public-transparency attestation policy.
+#
+# Accept a receipt only if it carries a verified author signature AND a verified
+# public Sigstore Rekor v2 transparency entry. Equivalent to the built-in
+# `--profile transparency`, shown here as a custom file you can extend.
+#
+#   apohara-sealchain verify model.bin model.bin.seal.json --policy examples/policies/transparency.toml
+#
+# Exit 0 = crypto ok AND policy satisfied; exit 5 = crypto ok but policy failed;
+# exit 1 = the receipt itself failed verification (tamper/mismatch).
+
+require_layers = ["ed25519", "rekor"]
+min_layers = 2

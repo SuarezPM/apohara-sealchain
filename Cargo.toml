@@ -1,0 +1,50 @@
+[workspace]
+resolver = "2"
+members = ["crates/apohara-sealchain-core", "crates/apohara-sealchain", "crates/sealchain-wasm"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+# MSRV floor = the maximum declared rust-version across the full dependency
+# tree (probed via `cargo metadata`). Set by c2pa 0.85 (1.88.0); time,
+# serde_with, darling and zip also require 1.88. serde_jcs needs 1.85 and
+# sigstore declares none, so neither raises the floor. Enforced by the `msrv`
+# CI job. Bump only after re-probing with `cargo metadata`.
+rust-version = "1.88"
+license = "MIT OR Apache-2.0"
+authors = ["Pablo M. Suarez"]
+repository = "https://github.com/SuarezPM/apohara-sealchain"
+description = "Verifiable, tamper-evident receipts for AI artifacts (MCP + CLI)"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+hex = "0.4"
+sha2 = "0.10"
+hmac = "0.12"
+ed25519-dalek = { version = "2.2", features = ["pkcs8", "pem", "rand_core"] }
+thiserror = "2"
+# `getrandom` (OsRng) is enabled per-consumer: apohara-sealchain-core turns it on only
+# in its `native` feature, so the wasm verify-only build does not pull a wasm RNG
+# it never uses.
+rand_core = { version = "0.6", default-features = false }
+mime_guess = "2"
+# Passphrase-encrypted keystore at rest (native only): scrypt KDF derives a key
+# from the passphrase, XChaCha20-Poly1305 AEADs the private material. Both are
+# pure-Rust RustCrypto crates (no openssl), and a wrong passphrase returns a
+# decrypt `Err` (auth-tag mismatch) rather than panicking.
+scrypt = { version = "0.11", default-features = false }
+chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc", "getrandom"] }
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+# Local receipt index (native only). `bundled` compiles SQLite from source so no
+# system libsqlite3 is needed; the index ships self-contained.
+rusqlite = { version = "0.32", features = ["bundled"] }
+clap = { version = "4", features = ["derive"] }
+tempfile = "3"
+assert_cmd = "2"
+predicates = "3"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1

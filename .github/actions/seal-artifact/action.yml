@@ -1,0 +1,129 @@
+name: seal-artifact
+description: >-
+  Seal a build artifact with the apohara-sealchain CLI, producing a tamper-evident
+  `<artifact>.seal.json` receipt. Offline by default (HMAC + Ed25519 + C2PA);
+  pass `args: --all` to add network-backed TSA + Rekor layers.
+
+inputs:
+  path:
+    description: Path to the artifact to seal.
+    required: true
+  args:
+    description: >-
+      Extra flags passed verbatim to `apohara-sealchain seal` (e.g. `--all`,
+      `--no-c2pa`, `--embed`, `--tsa`, `--rekor`). NOTE: `--all` (and `--tsa`
+      / `--rekor`) need network access at seal time; the default seal is fully
+      offline.
+    required: false
+    default: ""
+  out:
+    description: >-
+      Receipt output path. Defaults to `<path>.seal.json` next to the artifact
+      when omitted (matches the CLI default).
+    required: false
+    default: ""
+  version:
+    description: >-
+      Which apohara-sealchain release to use. `latest` (default) resolves the newest
+      published GitHub Release; otherwise pass a tag like `v0.1.0`.
+    required: false
+    default: latest
+
+outputs:
+  receipt:
+    description: Path to the produced `.seal.json` receipt.
+    value: ${{ steps.seal.outputs.receipt }}
+
+runs:
+  using: composite
+  steps:
+    - name: Acquire apohara-sealchain binary
+      id: acquire
+      shell: bash
+      env:
+        SEALCHAIN_VERSION: ${{ inputs.version }}
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+
+        # Already on PATH (e.g. a prior step installed it)? Nothing to do.
+        if command -v apohara-sealchain >/dev/null 2>&1; then
+          echo "apohara-sealchain already on PATH: $(command -v apohara-sealchain)"
+          exit 0
+        fi
+
+        # Map the runner OS to the published release asset name. The release
+        # workflow publishes exactly these three asset names.
+        case "${RUNNER_OS}" in
+          Linux)   asset="apohara-sealchain-x86_64-unknown-linux-gnu"; bin="apohara-sealchain" ;;
+          macOS)   asset="apohara-sealchain-aarch64-apple-darwin";     bin="apohara-sealchain" ;;
+          Windows) asset="apohara-sealchain-x86_64-pc-windows-msvc.exe"; bin="apohara-sealchain.exe" ;;
+          *) echo "::error::unsupported runner OS: ${RUNNER_OS}"; exit 1 ;;
+        esac
+
+        repo="SuarezPM/apohara-sealchain"
+        dest="${RUNNER_TEMP}/apohara-sealchain-bin"
+        mkdir -p "${dest}"
+
+        # 1) Fast path: cargo binstall pulls the prebuilt binary from the
+        #    release without compiling. Best-effort; we fall through on failure.
+        if command -v cargo-binstall >/dev/null 2>&1; then
+          ver_flag=""
+          if [ "${SEALCHAIN_VERSION}" != "latest" ]; then
+            ver_flag="--version ${SEALCHAIN_VERSION#v}"
+          fi
+          if cargo binstall --no-confirm ${ver_flag} apohara-sealchain; then
+            echo "installed via cargo binstall"
+            exit 0
+          fi
+          echo "cargo binstall failed; falling back to release download"
+        fi
+
+        # 2) Download the matching release asset with gh.
+        if [ "${SEALCHAIN_VERSION}" = "latest" ]; then
+          gh release download --repo "${repo}" --pattern "${asset}" --dir "${dest}" --clobber
+        else
+          gh release download "${SEALCHAIN_VERSION}" --repo "${repo}" --pattern "${asset}" --dir "${dest}" --clobber
+        fi
+
+        # Normalise to a stable binary name on PATH.
+        if [ "${RUNNER_OS}" = "Windows" ]; then
+          mv "${dest}/${asset}" "${dest}/${bin}"
+        else
+          mv "${dest}/${asset}" "${dest}/${bin}"
+          chmod +x "${dest}/${bin}"
+        fi
+        echo "${dest}" >> "${GITHUB_PATH}"
+        echo "installed apohara-sealchain from release ${SEALCHAIN_VERSION} (${asset})"
+
+    - name: Seal artifact
+      id: seal
+      shell: bash
+      env:
+        SEAL_PATH: ${{ inputs.path }}
+        SEAL_ARGS: ${{ inputs.args }}
+        SEAL_OUT: ${{ inputs.out }}
+      run: |
+        set -euo pipefail
+
+        if [ ! -e "${SEAL_PATH}" ]; then
+          echo "::error::artifact not found: ${SEAL_PATH}"
+          exit 1
+        fi
+
+        # `--out` is only added when an explicit path was provided; otherwise the
+        # CLI writes `<path>.seal.json` next to the artifact.
+        if [ -n "${SEAL_OUT}" ]; then
+          receipt="${SEAL_OUT}"
+          apohara-sealchain seal "${SEAL_PATH}" ${SEAL_ARGS} --out "${SEAL_OUT}"
+        else
+          receipt="${SEAL_PATH}.seal.json"
+          apohara-sealchain seal "${SEAL_PATH}" ${SEAL_ARGS}
+        fi
+
+        if [ ! -f "${receipt}" ]; then
+          echo "::error::expected receipt not produced: ${receipt}"
+          exit 1
+        fi
+        echo "receipt=${receipt}" >> "${GITHUB_OUTPUT}"
+        echo "sealed ${SEAL_PATH} -> ${receipt}"

@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "apohara-sealchain": {
+      "command": "apohara-sealchain",
+      "args": ["mcp"]
+    }
+  }
+}

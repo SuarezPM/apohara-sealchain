@@ -1,0 +1,28 @@
+{
+  "payload": {
+    "list": [
+      3,
+      2,
+      1
+    ],
+    "outer": {
+      "a": 1,
+      "b": 2
+    },
+    "z": "末"
+  },
+  "seal": {
+    "ed25519": {
+      "keyId": "default",
+      "sig": "0x0610fe7810c3dec70d0ca72c971ff5a6560849c2faf44caad0306c18e5b79c72cdfb57124a140f8620c40857421c9bb596b457749c8212fb8c32ef55f0ca1a06"
+    },
+    "hmac": {
+      "alg": "HMAC-SHA256",
+      "keyId": "hmac-default",
+      "sig": "0x4cbcab22efa175481b960f5556fc0e091fbbe74cfa2e2391c3681d736df02c71"
+    },
+    "method": "apohara-seal-v1",
+    "preimage": "0x7b226d6574686f64223a2261706f686172612d7365616c2d7631222c227061796c6f6164223a7b226c697374223a5b332c322c315d2c226f75746572223a7b2261223a312c2262223a327d2c227a223a22e69cab227d2c227365616c65644174223a22323032362d30312d30315430303a30303a30302b30303a3030227d",
+    "sealedAt": "2026-01-01T00:00:00+00:00"
+  }
+}

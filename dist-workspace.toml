@@ -1,0 +1,22 @@
+# cargo-dist configuration for apohara-sealchain.
+#
+# cargo-dist is NOT installed in this workspace. This file is the intended config
+# for when you run `dist init` / `dist generate` to produce the canonical release
+# workflow and installers. Until then, `.github/workflows/release.yml` is the
+# hand-written no-dist fallback.
+[workspace]
+members = ["cargo:."]
+
+[dist]
+# The cargo-dist version this config targets. Bump when you install/upgrade dist.
+cargo-dist-version = "0.28.0"
+# Generate the release workflow for GitHub Actions.
+ci = "github"
+# Build prebuilt installers for these platforms.
+installers = ["shell", "powershell"]
+# Target triples to build release binaries for.
+targets = [
+    "x86_64-unknown-linux-gnu",
+    "aarch64-apple-darwin",
+    "x86_64-pc-windows-msvc",
+]

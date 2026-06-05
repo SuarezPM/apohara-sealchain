@@ -1,0 +1,32 @@
+{
+  "payload": {
+    "k": 5,
+    "l1": {
+      "k": 4,
+      "l2": {
+        "k": 3,
+        "l3": {
+          "k": 2,
+          "l4": {
+            "k": 1,
+            "l5": "deep"
+          }
+        }
+      }
+    }
+  },
+  "seal": {
+    "ed25519": {
+      "keyId": "default",
+      "sig": "0xbb210a7317b365b3c2b4fe2a9fbf7f2d21bb8b680ad6e2454a9b144af89193ebe78055d3c305c2f5229eddcdc28b5f16add90f185a54e95e8a82f5ed78dce00d"
+    },
+    "hmac": {
+      "alg": "HMAC-SHA256",
+      "keyId": "hmac-default",
+      "sig": "0x117cd01e028f1b7ab8a4cd2323f0358d0efe2885b9e88afa55e840c9668eedb8"
+    },
+    "method": "apohara-seal-v1",
+    "preimage": "0x7b226d6574686f64223a2261706f686172612d7365616c2d7631222c227061796c6f6164223a7b226b223a352c226c31223a7b226b223a342c226c32223a7b226b223a332c226c33223a7b226b223a322c226c34223a7b226b223a312c226c35223a2264656570227d7d7d7d7d2c227365616c65644174223a22323032362d30312d30315430303a30303a30302b30303a3030227d",
+    "sealedAt": "2026-01-01T00:00:00+00:00"
+  }
+}

@@ -1,0 +1,27 @@
+{
+  "name": "@apohara/sealchain",
+  "version": "0.1.0",
+  "description": "npx wrapper that installs and runs the apohara-sealchain MCP stdio server (prebuilt binary).",
+  "license": "MIT OR Apache-2.0",
+  "publishConfig": {
+    "access": "public"
+  },
+  "homepage": "https://github.com/SuarezPM/apohara-sealchain",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/SuarezPM/apohara-sealchain.git"
+  },
+  "bin": {
+    "apohara-sealchain": "bin/apohara-sealchain.js"
+  },
+  "files": [
+    "bin/",
+    "install.js"
+  ],
+  "scripts": {
+    "postinstall": "node ./install.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

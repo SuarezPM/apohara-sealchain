@@ -1,0 +1,32 @@
+[package]
+name = "sealchain-wasm"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Offline in-browser receipt verifier for apohara-sealchain (wasm-bindgen over apohara-sealchain-core verify-only)"
+# Built locally to wasm32 for the static `web/` verifier; not a crates.io artifact.
+publish = false
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+# Verify-only subset of the engine: content + HMAC integrity + Ed25519 + C2PA,
+# no network/filesystem/OS deps, so it compiles to wasm32.
+apohara-sealchain-core = { path = "../apohara-sealchain-core", default-features = false, features = ["verify-only"] }
+serde = { workspace = true }
+serde_json.workspace = true
+wasm-bindgen = "0.2"
+serde-wasm-bindgen = "0.6"
+console_error_panic_hook = "0.1"
+
+[dev-dependencies]
+# Native (cfg(not(target_arch = "wasm32"))) smoke tests reuse the full engine to
+# produce a known-good receipt, then verify it through the same verify-only path
+# the wasm export calls.
+apohara-sealchain-core = { path = "../apohara-sealchain-core" }
+serde_json.workspace = true
+tempfile.workspace = true

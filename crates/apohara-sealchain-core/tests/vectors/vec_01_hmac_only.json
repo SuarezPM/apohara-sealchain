@@ -1,0 +1,15 @@
+{
+  "payload": {
+    "verdict": "blocked"
+  },
+  "seal": {
+    "hmac": {
+      "alg": "HMAC-SHA256",
+      "keyId": "hmac-default",
+      "sig": "0xd4d24ba915e584222ecf11eac0e0e23444d29c42d520c7ea22ef71c76d93d119"
+    },
+    "method": "apohara-seal-v1",
+    "preimage": "0x7b226d6574686f64223a2261706f686172612d7365616c2d7631222c227061796c6f6164223a7b2276657264696374223a22626c6f636b6564227d2c227365616c65644174223a22323032362d30312d30315430303a30303a30302b30303a3030227d",
+    "sealedAt": "2026-01-01T00:00:00+00:00"
+  }
+}

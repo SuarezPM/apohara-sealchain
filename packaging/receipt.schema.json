@@ -1,0 +1,283 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://apohara.dev/sealchain/receipt.schema.json",
+  "title": "apohara-seal-v1 receipt",
+  "description": "Wire schema for a apohara-sealchain `.seal.json` receipt: an artifact payload plus a seal block carrying the canonical preimage and one entry per active layer (HMAC, Ed25519, C2PA, TSA, Rekor v2). Authoritative shape matches crates/apohara-sealchain-core/src/schema.rs and artifact.rs. See SPEC.md for layer semantics.",
+  "type": "object",
+  "required": ["payload", "seal"],
+  "additionalProperties": false,
+  "properties": {
+    "payload": {
+      "$ref": "#/$defs/payload"
+    },
+    "seal": {
+      "$ref": "#/$defs/seal"
+    }
+  },
+  "$defs": {
+    "hex0x": {
+      "description": "A 0x-prefixed lowercase hex string.",
+      "type": "string",
+      "pattern": "^0x[0-9a-f]*$"
+    },
+    "payload": {
+      "description": "Application payload. The artifact orchestrator (`seal_artifact`) emits the artifact descriptor below, but the seal engine accepts any JSON object as a payload; only `artifactSha256` is required by `verify_artifact`'s content layer.",
+      "type": "object",
+      "required": ["artifactSha256"],
+      "properties": {
+        "artifactSha256": {
+          "description": "Lowercase hex SHA-256 of the artifact file bytes (no 0x prefix).",
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "path": {
+          "description": "Artifact file name (basename), as recorded at seal time.",
+          "type": "string"
+        },
+        "size": {
+          "description": "Artifact size in bytes.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "mime": {
+          "description": "Guessed MIME type, or application/octet-stream when unknown.",
+          "type": "string"
+        }
+      }
+    },
+    "seal": {
+      "description": "The seal block: method tag, timestamp, canonical preimage, and one entry per active layer.",
+      "type": "object",
+      "required": ["method", "sealedAt", "preimage", "hmac"],
+      "additionalProperties": false,
+      "not": {
+        "description": "c2paManifest (sidecar) and c2paEmbedded (in-file) are mutually exclusive.",
+        "required": ["c2paManifest", "c2paEmbedded"]
+      },
+      "properties": {
+        "method": {
+          "description": "Seal method tag. Always apohara-seal-v1 for this engine.",
+          "type": "string",
+          "const": "apohara-seal-v1"
+        },
+        "sealedAt": {
+          "description": "RFC 3339 timestamp the seal was produced at. Part of the preimage.",
+          "type": "string"
+        },
+        "preimage": {
+          "description": "0x-hex of the canonical preimage bytes: JCS({method, sealedAt, payload:strip_excluded(payload)}).",
+          "allOf": [{ "$ref": "#/$defs/hex0x" }]
+        },
+        "hmac": {
+          "$ref": "#/$defs/hmacLayer"
+        },
+        "ed25519": {
+          "$ref": "#/$defs/ed25519Layer"
+        },
+        "ed25519PublicKey": {
+          "description": "Embedded Ed25519 SPKI public key (PEM) making the receipt self-verifiable. Sibling of the layers, NOT part of the preimage.",
+          "type": "string"
+        },
+        "c2paManifest": {
+          "description": "0x-hex of the real C2PA JUMBF sidecar manifest store (SIDECAR mode). Sibling of the layers, NOT part of the preimage. Mutually exclusive with c2paEmbedded.",
+          "allOf": [{ "$ref": "#/$defs/hex0x" }]
+        },
+        "c2paEmbedded": {
+          "description": "True when the C2PA manifest is embedded IN the artifact file (in-file hard binding) rather than carried as a sidecar (EMBED mode). The C2PA layer is then verified by reading the manifest from the file itself. Sibling of the layers, NOT part of the preimage. Mutually exclusive with c2paManifest.",
+          "type": "boolean"
+        },
+        "tsa": {
+          "$ref": "#/$defs/tsaLayer"
+        },
+        "rekorAnchor": {
+          "$ref": "#/$defs/rekorAnchor"
+        }
+      }
+    },
+    "hmacLayer": {
+      "description": "Mandatory HMAC-SHA256 layer over the canonical preimage.",
+      "type": "object",
+      "required": ["alg", "keyId", "sig"],
+      "additionalProperties": false,
+      "properties": {
+        "alg": {
+          "description": "Algorithm identifier.",
+          "type": "string",
+          "const": "HMAC-SHA256"
+        },
+        "keyId": {
+          "description": "HMAC key identifier (hmac-default for the generated/default key).",
+          "type": "string"
+        },
+        "sig": {
+          "description": "0x-hex HMAC-SHA256 tag over the preimage (32 bytes / 64 hex chars).",
+          "allOf": [{ "$ref": "#/$defs/hex0x" }]
+        }
+      }
+    },
+    "ed25519Layer": {
+      "description": "Optional Ed25519 layer over the canonical preimage (raw 64-byte signature).",
+      "type": "object",
+      "required": ["keyId", "sig"],
+      "additionalProperties": false,
+      "properties": {
+        "keyId": {
+          "description": "Ed25519 key identifier (default for the generated/default key).",
+          "type": "string"
+        },
+        "sig": {
+          "description": "0x-hex Ed25519 signature over the preimage (64 bytes / 128 hex chars).",
+          "allOf": [{ "$ref": "#/$defs/hex0x" }]
+        }
+      }
+    },
+    "tsaLayer": {
+      "description": "Optional RFC 3161 TSA layer. The timestamped imprint is sha256(hmac.sig || ed25519.sig). Sibling of the layers, NOT part of the preimage.",
+      "type": "object",
+      "required": ["authority", "issuedAt", "der"],
+      "additionalProperties": false,
+      "properties": {
+        "authority": {
+          "description": "Short authority label for the TSA (e.g. sigstore, freetsa, or the host).",
+          "type": "string"
+        },
+        "issuedAt": {
+          "description": "Token issuance time from TstInfo.genTime, RFC 3339.",
+          "type": "string"
+        },
+        "der": {
+          "description": "0x-hex of the full DER-encoded RFC 3161 TimeStampResp token.",
+          "allOf": [{ "$ref": "#/$defs/hex0x" }]
+        }
+      }
+    },
+    "rekorAnchor": {
+      "description": "Optional Sigstore Rekor v2 DSSE transparency anchor over the canonical preimage. Sibling of the layers, NOT part of the preimage. Verified offline (RFC 6962 Merkle inclusion + C2SP checkpoint signature against a pinned shard key).",
+      "type": "object",
+      "required": [
+        "logIndex",
+        "logId",
+        "integratedTime",
+        "inclusionProof",
+        "canonicalizedBody",
+        "envelope",
+        "verifier"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "logIndex": {
+          "description": "Log index of the entry.",
+          "type": "integer"
+        },
+        "logId": {
+          "description": "Log ID (base64). Resolves the pinned shard public key for checkpoint verification.",
+          "type": "string"
+        },
+        "integratedTime": {
+          "description": "Integrated time (Unix seconds) as reported by the log.",
+          "type": "integer"
+        },
+        "inclusionProof": {
+          "$ref": "#/$defs/inclusionProof"
+        },
+        "canonicalizedBody": {
+          "description": "Base64 of the canonicalized Rekor entry body (the Merkle leaf preimage).",
+          "type": "string"
+        },
+        "envelope": {
+          "$ref": "#/$defs/dsseEnvelope"
+        },
+        "verifier": {
+          "$ref": "#/$defs/rekorVerifier"
+        }
+      }
+    },
+    "inclusionProof": {
+      "description": "RFC 6962 inclusion proof plus the C2SP signed-note checkpoint.",
+      "type": "object",
+      "required": ["logIndex", "treeSize", "rootHash", "hashes", "checkpoint"],
+      "additionalProperties": false,
+      "properties": {
+        "logIndex": {
+          "description": "0-based leaf index in the tree.",
+          "type": "integer"
+        },
+        "treeSize": {
+          "description": "Tree size the proof is against.",
+          "type": "integer"
+        },
+        "rootHash": {
+          "description": "Root hash (hex), committed by the checkpoint.",
+          "type": "string",
+          "pattern": "^[0-9a-f]+$"
+        },
+        "hashes": {
+          "description": "Sibling hashes (hex) along the leaf-to-root path.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[0-9a-f]+$"
+          }
+        },
+        "checkpoint": {
+          "description": "C2SP signed-note checkpoint text (origin, size, root, signatures).",
+          "type": "string"
+        }
+      }
+    },
+    "dsseEnvelope": {
+      "description": "The DSSE envelope submitted to Rekor: an in-toto Statement payload signed by the seal's Ed25519 key.",
+      "type": "object",
+      "required": ["payloadType", "payload", "signatures"],
+      "properties": {
+        "payloadType": {
+          "description": "DSSE payload type (application/vnd.in-toto+json).",
+          "type": "string"
+        },
+        "payload": {
+          "description": "Base64 of the in-toto Statement JSON (subject digest sha256 = sha256(preimage)).",
+          "type": "string"
+        },
+        "signatures": {
+          "description": "DSSE signatures over the PAE.",
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["sig"],
+            "properties": {
+              "sig": {
+                "description": "Base64 of the Ed25519 signature over the DSSE PAE.",
+                "type": "string"
+              },
+              "keyid": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      }
+    },
+    "rekorVerifier": {
+      "description": "The self-managed verifier: the seal's Ed25519 public key (SPKI DER, base64) plus keyDetails.",
+      "type": "object",
+      "required": ["publicKey", "keyDetails"],
+      "properties": {
+        "publicKey": {
+          "type": "object",
+          "required": ["rawBytes"],
+          "properties": {
+            "rawBytes": {
+              "description": "Base64 SPKI DER of the seal's Ed25519 public key.",
+              "type": "string"
+            }
+          }
+        },
+        "keyDetails": {
+          "description": "Public key algorithm enum (PKIX_ED25519).",
+          "type": "string",
+          "const": "PKIX_ED25519"
+        }
+      }
+    }
+  }
+}

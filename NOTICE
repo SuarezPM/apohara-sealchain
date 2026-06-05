@@ -1,0 +1,71 @@
+apohara-sealchain
+Copyright 2026 Pablo M. Suarez
+
+This product is licensed under the terms of the MIT license OR the Apache
+License, Version 2.0, at your option. See LICENSE-MIT and LICENSE-APACHE.
+
+================================================================================
+Funding
+================================================================================
+Development of apohara-sealchain was supported by Cardano Project Catalyst.
+
+================================================================================
+Reference specification (reimplemented, not vendored)
+================================================================================
+The seal wire format (`apohara-seal-v1`), layer semantics, and conformance
+test vectors are a clean-room Rust reimplementation derived from the Python
+reference implementation `core/seal` in the apohara-probanza monorepo,
+which is licensed under the Apache License, Version 2.0.
+
+  apohara-probanza / core/seal — Copyright the Apohara authors — Apache-2.0
+
+Where the Python reference is internally inconsistent (the C2PA manifest hash
+input and the Rekor signed-checkpoint verification), this Rust implementation
+defines the canonical `apohara-seal-v1` behavior and documents the divergence.
+
+================================================================================
+Third-party upstream crates
+================================================================================
+This product depends on, and gratefully acknowledges, the following upstream
+open-source crates (each under its own license; see their repositories):
+
+  - c2pa (c2pa-rs), Adobe Content Authenticity Initiative — Apache-2.0 / MIT
+  - rcgen — MIT / Apache-2.0
+    (generates the seal's self-signed X.509 signing certificate for C2PA)
+  - sigstore-rekor, sigstore-tsa, sigstore-merkle, sigstore-crypto,
+    sigstore-types (the sigstore-rust workspace) — Apache-2.0
+    (sigstore-tsa requests + verifies the RFC 3161 TSA timestamp token;
+    sigstore-rekor submits the Rekor v2 DSSE entry; sigstore-merkle does the
+    RFC 6962 inclusion recompute; sigstore-crypto verifies the Ed25519 C2SP
+    checkpoint signature against the pinned shard key)
+  - reqwest — MIT / Apache-2.0
+    (HTTPS client for the Rekor v2 shard health check + submit)
+  - base64 — MIT / Apache-2.0
+    (Rekor entry body / verifier key <-> anchor JSON encoding)
+  - tokio — MIT
+    (private current-thread runtime driving the sync TSA + Rekor network calls)
+  - rustls-pki-types — MIT / Apache-2.0
+    (CertificateDer for the best-effort TSA certificate-chain check)
+  - ed25519-dalek — BSD-3-Clause
+  - RustCrypto: hmac, sha2 — MIT / Apache-2.0
+  - RustCrypto: scrypt, chacha20poly1305 — MIT / Apache-2.0
+    (passphrase-encrypted keystore at rest, native-only: scrypt is the memory-hard
+    KDF (RFC 7914) deriving the key from the passphrase; chacha20poly1305 provides
+    the XChaCha20-Poly1305 AEAD whose decrypt returns an Err on a wrong passphrase)
+  - rusqlite (with the `bundled` feature) — MIT
+    (local receipt index DB, native-only: a convenience/discovery layer recording
+    where receipts live; `bundled` compiles SQLite from source so no system
+    libsqlite3 is required. The index is rebuildable from receipts, never a
+    source of truth)
+  - glob — MIT / Apache-2.0
+    (expands `seal` glob patterns, e.g. `out/*.png`, when the shell did not)
+  - rmcp (official Model Context Protocol Rust SDK) — MIT
+  - clap — MIT / Apache-2.0
+  - serde, serde_json — MIT / Apache-2.0
+  - mime_guess — MIT
+  - wasm-bindgen, js-sys, web-sys — MIT / Apache-2.0
+    (the in-browser verifier crate `sealchain-wasm` and c2pa-rs's wasm32 layer)
+  - serde-wasm-bindgen — MIT
+    (maps the per-layer verify result into a JS object for the web verifier)
+  - console_error_panic_hook — MIT / Apache-2.0
+    (routes a wasm panic to a readable browser console error)

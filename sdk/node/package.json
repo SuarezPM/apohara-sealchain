@@ -1,0 +1,31 @@
+{
+  "name": "sealchain",
+  "version": "0.1.0",
+  "description": "Thin Node SDK that wraps the sealchain CLI for verifiable, tamper-evident artifact receipts.",
+  "type": "module",
+  "main": "index.mjs",
+  "exports": "./index.mjs",
+  "files": [
+    "index.mjs",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "keywords": [
+    "sealchain",
+    "c2pa",
+    "provenance",
+    "receipt",
+    "ed25519"
+  ],
+  "license": "MIT OR Apache-2.0",
+  "author": "Pablo M. Suarez",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/SuarezPM/apohara-sealchain"
+  }
+}

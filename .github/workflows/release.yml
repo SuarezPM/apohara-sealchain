@@ -1,0 +1,121 @@
+# Release workflow for apohara-sealchain (no-dist fallback).
+#
+# If cargo-dist is initialized (see dist-workspace.toml), prefer its generated
+# workflow; this is the no-dist fallback.
+#
+# Triggered on a `v*` tag. Per-OS it builds the release binary for the matching
+# target triple and uploads it as a GitHub Release asset. The npx wrapper
+# (npx/install.js) downloads these assets by platform/arch.
+name: release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            bin: apohara-sealchain
+            asset: apohara-sealchain-x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            bin: apohara-sealchain
+            asset: apohara-sealchain-aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            bin: apohara-sealchain.exe
+            asset: apohara-sealchain-x86_64-pc-windows-msvc.exe
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build release binary
+        run: cargo build --release -p apohara-sealchain --target ${{ matrix.target }}
+
+      - name: Stage binary (unix)
+        if: runner.os != 'Windows'
+        run: cp target/${{ matrix.target }}/release/${{ matrix.bin }} ${{ matrix.asset }}
+
+      - name: Stage binary (windows)
+        if: runner.os == 'Windows'
+        run: copy target\${{ matrix.target }}\release\${{ matrix.bin }} ${{ matrix.asset }}
+
+      - name: Upload Release asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ matrix.asset }}
+          fail_on_unmatched_files: true
+
+  # Publish the two library crates to crates.io. Runs after the binaries build so
+  # a tag that does not compile never publishes. `apohara-sealchain` depends on the
+  # version-pinned `apohara-sealchain-core`, so core is published first; modern cargo
+  # waits for the new version to appear in the index before the dependent publish.
+  publish-crates:
+    name: publish to crates.io
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Publish apohara-sealchain-core, then apohara-sealchain
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          ver="${GITHUB_REF_NAME#v}"
+          publish() {
+            if curl -sf -H "User-Agent: apohara-sealchain-ci" \
+                "https://crates.io/api/v1/crates/$1/$ver" >/dev/null 2>&1; then
+              echo "$1@$ver already on crates.io — skipping"
+            else
+              cargo publish -p "$1"
+            fi
+          }
+          # core first; modern cargo waits for it to appear in the index before
+          # the dependent bin publish. Re-running a tag is safe (already-published
+          # versions are skipped).
+          publish apohara-sealchain-core
+          publish apohara-sealchain
+
+  # Publish the npx wrapper. It downloads the platform binary from this release,
+  # so it runs after the release assets are uploaded (needs: build).
+  publish-npm:
+    name: publish npx wrapper to npm
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+      - name: Publish npm package
+        working-directory: npx
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          name=$(node -p "require('./package.json').name")
+          ver=$(node -p "require('./package.json').version")
+          if npm view "$name@$ver" version >/dev/null 2>&1; then
+            echo "$name@$ver already on npm — skipping"
+          else
+            npm publish --access public
+          fi

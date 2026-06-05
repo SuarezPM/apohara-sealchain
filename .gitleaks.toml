@@ -1,0 +1,19 @@
+# gitleaks config for apohara-sealchain. Run: gitleaks detect --no-banner
+title = "apohara-sealchain gitleaks"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "pem-private-key"
+description = "PEM private key material must never be committed"
+regex = '''-----BEGIN (EC |RSA |OPENSSH |DSA |PGP )?PRIVATE KEY-----'''
+keywords = ["PRIVATE KEY"]
+
+[allowlist]
+description = "Non-secret material: fixed conformance test keys, and the PINNED PUBLIC Rekor shard key + its SHA-256 fingerprint (keySha256). These are public verification anchors, not secrets."
+paths = [
+    '''crates/apohara-sealchain-core/tests/vectors/.*''',
+    '''.*rekor-shards\.json''',
+    '''LICENSE-APACHE''',
+]

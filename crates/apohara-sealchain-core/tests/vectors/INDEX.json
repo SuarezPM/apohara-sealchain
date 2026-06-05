@@ -1,0 +1,211 @@
+{
+  "count": 26,
+  "tier": "A",
+  "vectors": [
+    {
+      "layers": [
+        "hmac"
+      ],
+      "name": "vec_01_hmac_only",
+      "uses_ed25519": false
+    },
+    {
+      "layers": [
+        "hmac",
+        "ed25519"
+      ],
+      "name": "vec_02_hmac_ed",
+      "uses_ed25519": true
+    },
+    {
+      "layers": [
+        "hmac",
+        "ed25519"
+      ],
+      "name": "vec_03_simple_v1",
+      "uses_ed25519": true
+    },
+    {
+      "layers": [
+        "hmac",
+        "ed25519"
+      ],
+      "name": "vec_04_excluded_key",
+      "uses_ed25519": true
+    },
+    {
+      "layers": [
+        "hmac",
+        "ed25519"
+      ],
+      "name": "vec_05_astral_unicode",
+      "uses_ed25519": true
+    },
+    {
+      "layers": [
+        "hmac",
+        "ed25519"
+      ],
+      "name": "vec_06_numbers",
+      "uses_ed25519": true
+    },
+    {
+      "layers": [
+        "hmac",
+        "ed25519"
+      ],
+      "name": "vec_07_nested",
+      "uses_ed25519": true
+    },
+    {
+      "layers": [
+        "hmac",
+        "ed25519"
+      ],
+      "name": "vec_08_artifact_descriptor",
+      "uses_ed25519": true
+    },
+    {
+      "layers": [
+        "hmac",
+        "ed25519"
+      ],
+      "name": "vec_09_empty_object",
+      "uses_ed25519": true
+    },
+    {
+      "layers": [
+        "hmac",
+        "ed25519"
+      ],
+      "name": "vec_10_empty_string_values",
+      "uses_ed25519": true
+    },
+    {
+      "layers": [
+        "hmac",
+        "ed25519"
+      ],
+      "name": "vec_11_deeply_nested",
+      "uses_ed25519": true
+    },
+    {
+      "layers": [
+        "hmac",
+        "ed25519"
+      ],
+      "name": "vec_12_array_mixed",
+      "uses_ed25519": true
+    },
+    {
+      "layers": [
+        "hmac",
+        "ed25519"
+      ],
+      "name": "vec_13_array_of_objects",
+      "uses_ed25519": true
+    },
+    {
+      "layers": [
+        "hmac",
+        "ed25519"
+      ],
+      "name": "vec_14_int_bounds",
+      "uses_ed25519": true
+    },
+    {
+      "layers": [
+        "hmac",
+        "ed25519"
+      ],
+      "name": "vec_15_floats_edge",
+      "uses_ed25519": true
+    },
+    {
+      "layers": [
+        "hmac",
+        "ed25519"
+      ],
+      "name": "vec_16_unicode_combining_rtl",
+      "uses_ed25519": true
+    },
+    {
+      "layers": [
+        "hmac",
+        "ed25519"
+      ],
+      "name": "vec_17_jcs_sort",
+      "uses_ed25519": true
+    },
+    {
+      "layers": [
+        "hmac",
+        "ed25519"
+      ],
+      "name": "vec_18_all_excluded",
+      "uses_ed25519": true
+    },
+    {
+      "layers": [
+        "hmac",
+        "ed25519"
+      ],
+      "name": "vec_19_bool_null",
+      "uses_ed25519": true
+    },
+    {
+      "layers": [
+        "hmac",
+        "ed25519"
+      ],
+      "name": "vec_20_repeated_nested_keys",
+      "uses_ed25519": true
+    },
+    {
+      "layers": [
+        "hmac",
+        "ed25519"
+      ],
+      "name": "vec_21_large_payload",
+      "uses_ed25519": true
+    },
+    {
+      "layers": [
+        "hmac"
+      ],
+      "name": "vec_22_hmac_only_nested",
+      "uses_ed25519": false
+    },
+    {
+      "layers": [
+        "hmac"
+      ],
+      "name": "vec_23_hmac_only_unicode",
+      "uses_ed25519": false
+    },
+    {
+      "layers": [
+        "hmac",
+        "ed25519"
+      ],
+      "name": "vec_24_artifact_full",
+      "uses_ed25519": true
+    },
+    {
+      "layers": [
+        "hmac",
+        "ed25519"
+      ],
+      "name": "vec_25_escapes",
+      "uses_ed25519": true
+    },
+    {
+      "layers": [
+        "hmac",
+        "ed25519"
+      ],
+      "name": "vec_26_empty_containers",
+      "uses_ed25519": true
+    }
+  ]
+}
