@@ -8,7 +8,8 @@
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue?style=for-the-badge)](#-license)
 [![crates.io](https://img.shields.io/crates/v/apohara-sealchain?style=for-the-badge&logo=rust&label=crates.io)](https://crates.io/crates/apohara-sealchain)
 [![Rust](https://img.shields.io/badge/rust-1.88%2B-orange?style=for-the-badge&logo=rust)](https://www.rust-lang.org)
-[![MCP](https://img.shields.io/badge/MCP-stdio%20server-success?style=for-the-badge)](https://modelcontextprotocol.io)
+[![MCP](https://img.shields.io/badge/MCP-stdio%20%2B%20http-success?style=for-the-badge)](https://modelcontextprotocol.io)
+[![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/SuarezPM/apohara-sealchain?style=for-the-badge&label=OpenSSF%20Scorecard)](https://scorecard.dev/viewer/?uri=github.com/SuarezPM/apohara-sealchain)
 
 **[Quick Start](#-quick-start)** · **[The five layers](#-the-five-layers)** · **[Trust profile](#-trust-profile)** · **[How it works / honesty](#-how-it-works--honesty)**
 
@@ -60,13 +61,14 @@ The same binary speaks the [Model Context Protocol](https://modelcontextprotocol
 | | |
 |---|---|
 | 🧾 **Self-contained receipts** | One `<artifact>.seal.json` sidecar carries every layer + the embedded public key. Verify with just the file and the receipt — no account, no key server, no network. |
-| 🔌 **CLI _and_ MCP server** | `apohara-sealchain` is a full CLI; `apohara-sealchain mcp` is an stdio MCP server exposing `seal_artifact` / `verify_receipt` / `show_chain` to any agent. |
+| 🔌 **CLI _and_ MCP server** | `apohara-sealchain` is a full CLI; `apohara-sealchain mcp` is an MCP server (stdio by default, or streamable-HTTP with `mcp --http <host:port>` for remote/CI) exposing `seal_artifact` / `verify_receipt` / `show_chain` to any agent. |
 | 🧭 **Canonical trust profile** | [`packaging/trust-profile.json`](packaging/trust-profile.json) states, machine-readably, **what each layer combination proves and does not prove**. |
 | 🎫 **Attestation policies** | `verify --policy file.toml` or `--profile {offline-basic\|transparency\|legal-grade\|full}` enforces a bar after verification — exit `5` if crypto is valid but the policy isn't met, `1` if the artifact was tampered. |
 | 📊 **Offline transparency dashboard** | `apohara-sealchain dashboard` renders a self-contained HTML report of your receipts — layers, an honest verify status, policy compliance — with **zero network references**. |
 | 🌐 **In-browser verifier (WASM)** | Drag a file + its receipt onto a static page and verify content + Ed25519 + C2PA fully offline in WebAssembly — no backend, no upload. |
-| 📜 **SLSA-style provenance** | `apohara-sealchain provenance` maps a receipt onto an in-toto Statement v1 for supply-chain tooling — honestly typed, never claiming SLSA *build* semantics. |
+| 📜 **SLSA-style provenance** | `apohara-sealchain provenance` maps a receipt onto an in-toto Statement v1 for supply-chain tooling — honestly typed, never claiming SLSA *build* semantics. `--format model-signing` emits the model-transparency / OpenSSF Model Signing shape for ML-ecosystem interop. |
 | 🦀 **Honest by construction** | Pure Rust. `verify` is always offline. Every layer produces and re-checks real crypto, or the seal aborts — there is no faked pass anywhere in the tree. |
+| 🔏 **Signed releases** | Every release binary carries a SLSA **build provenance (L2+)** attestation (Sigstore keyless) — verify it with `gh attestation verify` before you run it. |
 
 ---
 
@@ -78,7 +80,7 @@ All five are implemented and **live-exercised** — no placeholders, no unexerci
 |---|---|---|
 | **HMAC-SHA256** | local integrity (symmetric) | always present; the secret is **never** in the receipt |
 | **Ed25519** | authorship by the key holder | public key embedded → offline, self-contained verify |
-| **C2PA** | a provenance manifest is bound to the payload | real JUMBF manifest; v0.1 is **self-signed** with the seal key (not third-party-trust-anchored) |
+| **C2PA** | a provenance manifest is bound to the payload | real JUMBF manifest; v0.1 is **self-signed** with the seal key (not third-party-trust-anchored); `--ai-generated` records the IPTC `trainedAlgorithmicMedia` source type |
 | **RFC-3161 TSA** | existence-before-a-point-in-time, per the authority | real token; the default TSA is **not** eIDAS-qualified — point `--tsa` at a [QTSP](#-how-it-works--honesty) for legal-grade |
 | **Sigstore Rekor v2** | public, append-only transparency-log inclusion | real DSSE entry; offline-verifiable inclusion proof + C2SP checkpoint against a pinned shard key |
 
@@ -138,7 +140,16 @@ apohara-sealchain find model
 **Other paths.** `npx -y @apohara/sealchain` downloads the prebuilt binary and runs the MCP server. Pre-built per-OS binaries are on [Releases](https://github.com/SuarezPM/apohara-sealchain/releases). Thin [Python / Node SDKs](sdk/) wrap the binary, and a reusable [GitHub Action](.github/actions/seal-artifact) seals build artifacts in CI.
 
 > [!WARNING]
-> Downloading a pre-built binary is itself a supply-chain surface — the very risk this tool exists to make auditable. Prefer `cargo install` and build from source, or verify the release checksum before running.
+> Downloading a pre-built binary is itself a supply-chain surface — the very risk this tool exists to make auditable. Prefer `cargo install` and build from source, or verify the release provenance (below) before running.
+
+**Verify the release provenance.** Every release binary ships with a SLSA **build provenance (L2+)** attestation, minted by the release workflow with Sigstore keyless signing (no long-lived key). Verify a downloaded asset against this repository before running it:
+
+```sh
+gh attestation verify apohara-sealchain-x86_64-unknown-linux-gnu \
+  --repo SuarezPM/apohara-sealchain
+```
+
+The attestation is bound to the asset's digest, so it covers exactly the bytes you run. (We claim **L2+**, not L3, until the level is independently verified against a published release — measure, don't assert.)
 
 </details>
 
@@ -165,13 +176,15 @@ A layer counts toward a profile **only if it is present and its verification pas
 > **A seal is evidence, not a verdict — and not legal advice.** It does not make an artifact "trusted"; it lets a human (or a policy) decide based on layers that each re-check their own crypto. Read these limits before you rely on it:
 >
 > - **The default timestamp is _not_ legally qualified.** A non-eIDAS TSA is fine for integrity/credibility but is not a court-admissible *qualified* timestamp under [eIDAS Art. 42](https://eur-lex.europa.eu/eli/reg/2014/910/oj). For legal weight, point `--tsa` at a Qualified Trust Service Provider on an [EU Trusted List](https://digital-strategy.ec.europa.eu/en/policies/eu-trusted-lists) — that is your account to provide.
-> - **The v0.1 C2PA manifest is self-signed** with the seal's Ed25519 key (trust check disabled — "Valid, not Trusted"). It binds the payload, but is not a third-party-trust-anchored C2PA credential.
+> - **The v0.1 C2PA manifest is self-signed** with the seal's Ed25519 key (trust check disabled — "Valid, not Trusted"). It binds the payload, but is not a third-party-trust-anchored C2PA credential. The CA-issued upgrade path (SSL.com / DigiCert) and its trade-offs are documented in [`docs/c2pa-trust.md`](docs/c2pa-trust.md).
 > - **`require_qualified_tsa` is a host-allowlist match**, not cryptographic proof of eIDAS qualification — and the violation message says so.
 > - **HMAC is symmetric.** Only the secret holder can re-check it; a third party verifies content + Ed25519 + C2PA instead, and the tools say so rather than fake a pass.
 
 **Measure, don't assert.** No layer hardcodes a pass. Each re-derives and re-checks its binding at verify time, or reports `ok: false` with a reason. The Rekor inclusion proof and signed checkpoint verify **offline** against a shard key [pinned with provenance](packaging/rekor-shards.json) — never fetched from the thing being verified — and an unknown log key is a measured `ok: false`, never a silent pass.
 
-**Wire format.** The receipt schema (`apohara-seal-v1`), every layer's binding, and verify semantics are specified in [`SPEC.md`](SPEC.md). The format is a clean-room Rust reimplementation of an Apache-2.0 reference; where the reference is internally inconsistent, this implementation defines the canonical behavior and documents the divergence (see [`NOTICE`](NOTICE)).
+**Wire format.** The receipt schema (`apohara-seal-v1`), every layer's binding, and verify semantics are specified in [`SPEC.md`](SPEC.md) — including a per-field [compatibility matrix](SPEC.md#51-field-compatibility-matrix) (since-version, required/optional, native vs WASM verifier coverage) backed by the machine-readable [`packaging/receipt.schema.json`](packaging/receipt.schema.json). The format is a clean-room Rust reimplementation of an Apache-2.0 reference; where the reference is internally inconsistent, this implementation defines the canonical behavior and documents the divergence (see [`NOTICE`](NOTICE)).
+
+**Performance.** Honest, reproducible offline-profile numbers (seal/verify latency, batch throughput, the C2PA cost, receipt size) live in [`BENCHMARK.md`](BENCHMARK.md) — regenerate them yourself with [`scripts/bench.sh`](scripts/bench.sh).
 
 ---
 
@@ -199,13 +212,21 @@ apohara-sealchain/
 ## 🗺️ Roadmap
 
 - [x] Five real, live-exercised layers (HMAC · Ed25519 · C2PA · RFC-3161 TSA · Rekor v2)
-- [x] CLI + MCP stdio server + offline in-browser WASM verifier
+- [x] CLI + MCP server (stdio **and** streamable-HTTP) + offline in-browser WASM verifier
 - [x] Canonical machine-readable trust profile + attestation policies + transparency dashboard
-- [x] Thin Python / Node SDKs · in-toto/SLSA-style provenance · encrypted keystore + rotation
-- [x] Batch sealing + local receipt index · reusable GitHub Action
-- [ ] Third-party-trust-anchored C2PA signer (beyond v0.1 self-signed)
+- [x] Thin Python / Node SDKs · in-toto/SLSA-style provenance (+ model-transparency interop) · encrypted keystore + rotation
+- [x] Batch sealing + local receipt index · reusable GitHub Actions (`seal-artifact`, `huggingface-seal`)
+- [x] Signed releases (SLSA build provenance) · OpenSSF Scorecard · `SECURITY.md` · honest [benchmarks](BENCHMARK.md)
+- [x] Rekor seal-time stale-shard guard (TUF SigningConfig) · C2PA AI-generated disclosure (`--ai-generated`)
+- [ ] Third-party-trust-anchored C2PA signer beyond v0.1 self-signed (workflow documented in [`docs/c2pa-trust.md`](docs/c2pa-trust.md))
 - [ ] First-class eIDAS QTSP presets for legal-grade timestamps
-- [ ] HuggingFace Hub / model-registry integrations
+- [ ] Direct HuggingFace Hub model-registry push (beyond the seal Action)
+
+---
+
+## 🛡️ Security
+
+Found a vulnerability? Please report it **privately** via [GitHub Security Advisories](https://github.com/SuarezPM/apohara-sealchain/security/advisories/new) — see [`SECURITY.md`](SECURITY.md) for the disclosure process, supported versions, and the **threat model** (what each layer protects and what it deliberately does not).
 
 ---
 

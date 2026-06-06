@@ -64,6 +64,11 @@ pub struct SealParams {
     /// false.
     #[serde(default)]
     pub all: bool,
+    /// Mark the artifact as AI-generated in the C2PA manifest: the created action
+    /// records the IPTC `trainedAlgorithmicMedia` digital source type (C2PA 2.x),
+    /// for AI-content disclosure. Requires c2pa=true. Defaults to false (no claim).
+    #[serde(default)]
+    pub ai_generated: bool,
 }
 
 fn default_true() -> bool {
@@ -138,9 +143,11 @@ rekor, and all parameters add network-backed layers that REQUIRE connectivity at
 seal time: tsa adds an RFC 3161 timestamp, rekor adds a Sigstore Rekor v2 \
 transparency entry (each takes a URL, or empty string for the default endpoint), \
 and all=true seals every configured layer real-or-abort — if any requested layer \
-cannot be produced the call errors and NO receipt is written. Writes \
-<path>.seal.json next to the artifact and returns the layer results of verifying \
-the freshly sealed receipt."
+cannot be produced the call errors and NO receipt is written. Set ai_generated=true \
+to record an AI-generated disclosure (IPTC trainedAlgorithmicMedia source type) in \
+the C2PA manifest; it requires the C2PA layer (errors if combined with c2pa=false). \
+Writes <path>.seal.json next to the artifact and returns the layer results of \
+verifying the freshly sealed receipt."
     )]
     pub async fn seal_artifact(
         &self,
@@ -149,6 +156,7 @@ the freshly sealed receipt."
         let path = PathBuf::from(params.path);
         let c2pa = params.c2pa;
         let embed = params.embed;
+        let ai_generated = params.ai_generated;
         // Resolve the seal mode: `all` implies tsa+rekor at their defaults; an
         // explicit param uses its URL, or the default when given empty.
         let resolve = |value: Option<String>, default: &str| -> Option<String> {
@@ -172,6 +180,7 @@ the freshly sealed receipt."
                 embed,
                 tsa.as_deref(),
                 rekor.as_deref(),
+                ai_generated,
             )
             .map_err(|e| e.to_string())?;
 

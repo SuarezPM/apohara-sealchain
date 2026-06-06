@@ -34,6 +34,30 @@ pub const STATEMENT_TYPE_V1: &str = "https://in-toto.io/Statement/v1";
 /// builds, so it does not claim SLSA Build semantics. See the module docs.
 pub const PREDICATE_TYPE_V1: &str = "https://apohara.dev/sealchain/provenance/v1";
 
+/// The model-transparency / OpenSSF Model Signing predicate type emitted by
+/// [`model_signing_statement`] for ML-ecosystem interop. Pinned to interoperate
+/// with sigstore/model-transparency (subjects = (path, sha256) pairs); the vendored
+/// shape + provenance live in `packaging/model-signing-schema.json`.
+pub const MODEL_SIGNING_PREDICATE_TYPE_V1: &str = "https://model_signing/signature/v1.0";
+
+/// The in-toto Statement subject for `record`: a single `(name, {sha256})` pair.
+/// The name is the artifact's recorded path, falling back to the digest so the
+/// subject is never anonymous. Shared by both statement shapes.
+fn subject_for(record: &SealedRecord) -> Value {
+    let artifact_sha256 = record
+        .payload
+        .get("artifactSha256")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let subject_name = record
+        .payload
+        .get("path")
+        .and_then(Value::as_str)
+        .filter(|s| !s.is_empty())
+        .unwrap_or(artifact_sha256);
+    json!([{ "name": subject_name, "digest": { "sha256": artifact_sha256 } }])
+}
+
 /// Build an in-toto Statement v1 attesting the seal of `record`'s artifact.
 ///
 /// Shape:
@@ -53,30 +77,38 @@ pub const PREDICATE_TYPE_V1: &str = "https://apohara.dev/sealchain/provenance/v1
 /// and notes which are independently verifiable offline. Deterministic: the only
 /// timestamp is the record's own `seal.sealedAt`.
 pub fn provenance_statement(record: &SealedRecord) -> Value {
-    let artifact_sha256 = record
-        .payload
-        .get("artifactSha256")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    // The subject name is the artifact's recorded path; fall back to the digest so
-    // the subject is never anonymous even on a path-less payload.
-    let subject_name = record
-        .payload
-        .get("path")
-        .and_then(Value::as_str)
-        .filter(|s| !s.is_empty())
-        .unwrap_or(artifact_sha256);
-
-    let subject = json!([{
-        "name": subject_name,
-        "digest": { "sha256": artifact_sha256 },
-    }]);
-
     json!({
         "_type": STATEMENT_TYPE_V1,
-        "subject": subject,
+        "subject": subject_for(record),
         "predicateType": PREDICATE_TYPE_V1,
         "predicate": build_predicate(record),
+    })
+}
+
+/// Build an in-toto Statement in the **model-transparency / OpenSSF Model Signing**
+/// shape ([`MODEL_SIGNING_PREDICATE_TYPE_V1`]) for interop with the ML-signing
+/// ecosystem (sigstore/model-transparency consumers).
+///
+/// Same in-toto envelope and the same `(name, sha256)` subject as
+/// [`provenance_statement`] — so a model-signing verifier can match the artifact
+/// digest — but with the model-signing `predicateType`. The predicate cross-links
+/// back to apohara's native attestation (it does **not** restate or replace it):
+/// it records the seal method, the receipt's `sealedAt`, and the native
+/// [`PREDICATE_TYPE_V1`] so a consumer can fetch the full apohara provenance. No
+/// value is invented; deterministic given a record.
+pub fn model_signing_statement(record: &SealedRecord) -> Value {
+    json!({
+        "_type": STATEMENT_TYPE_V1,
+        "subject": subject_for(record),
+        "predicateType": MODEL_SIGNING_PREDICATE_TYPE_V1,
+        "predicate": {
+            "sealedBy": "apohara-sealchain",
+            "method": record.seal.method,
+            "sealedAt": record.seal.sealed_at,
+            // Cross-link, not a copy: the authoritative apohara provenance is its
+            // own predicate type, emitted by `provenance_statement`.
+            "sealchainPredicateType": PREDICATE_TYPE_V1,
+        },
     })
 }
 
@@ -309,6 +341,50 @@ mod tests {
         let record = base_record();
         // No now(): two calls on the same record produce byte-identical output.
         assert_eq!(provenance_statement(&record), provenance_statement(&record));
+    }
+
+    #[test]
+    fn model_signing_statement_matches_vendored_shape() {
+        // Publish-safe: the vendored descriptor lives in packaging/ (not in the
+        // crate package), so skip if absent — `cargo publish` is unaffected.
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../../packaging/model-signing-schema.json");
+        let Ok(text) = std::fs::read_to_string(&path) else {
+            return;
+        };
+        let schema: Value = serde_json::from_str(&text).expect("descriptor parses");
+
+        let stmt = model_signing_statement(&base_record());
+
+        assert_eq!(stmt["_type"], schema["statementType"]);
+        assert_eq!(stmt["predicateType"], schema["predicateType"]);
+        assert_eq!(stmt["predicateType"], MODEL_SIGNING_PREDICATE_TYPE_V1);
+        for k in schema["requiredStatementKeys"].as_array().unwrap() {
+            let key = k.as_str().unwrap();
+            assert!(stmt.get(key).is_some(), "missing statement key {key}");
+        }
+        let subj = &stmt["subject"][0];
+        for k in schema["requiredSubjectKeys"].as_array().unwrap() {
+            let key = k.as_str().unwrap();
+            assert!(subj.get(key).is_some(), "missing subject key {key}");
+        }
+        // The subject digest equals the record's artifactSha256, so a model-signing
+        // verifier can match it against a hash of the artifact.
+        assert!(subj["digest"]["sha256"].is_string());
+        assert_eq!(subj["digest"]["sha256"], "0daed7749b4f02b8f76240d5deadbeef");
+    }
+
+    #[test]
+    fn model_signing_keeps_native_predicate_distinct() {
+        let r = base_record();
+        // Interop export uses the model-signing predicate; the native export keeps
+        // apohara's own. Neither claims slsa.dev.
+        assert_eq!(
+            model_signing_statement(&r)["predicateType"],
+            MODEL_SIGNING_PREDICATE_TYPE_V1
+        );
+        assert_eq!(provenance_statement(&r)["predicateType"], PREDICATE_TYPE_V1);
+        assert!(!MODEL_SIGNING_PREDICATE_TYPE_V1.contains("slsa.dev"));
     }
 
     /// Find the attestation entry of the given `type` in a Statement.

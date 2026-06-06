@@ -136,6 +136,18 @@ submission process (requires the maintainer's account).
 Publish the project page and the in-browser WASM verifier
 (`sealchain-wasm`) at https://apohara.dev/sealchain.
 
+### 7. 🔒 OpenSSF Best Practices registration
+
+The OpenSSF Scorecard badge (in the README) populates automatically once
+`scorecard.yml` runs on the default branch. The **OpenSSF Best Practices** badge,
+in contrast, requires a one-time manual registration:
+
+1. Sign in at <https://www.bestpractices.dev> with the maintainer's GitHub account.
+2. Register `github.com/SuarezPM/apohara-sealchain` and complete the questionnaire.
+3. Add the project-id badge to the README **only after** registration, so the badge
+   reflects the project's real status (`in progress` / `passing`) — never paste a
+   `passing` badge before the criteria are actually met.
+
 ---
 
 **All steps in this GATED section require the maintainer's credentials and explicit

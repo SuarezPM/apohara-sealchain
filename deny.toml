@@ -12,6 +12,12 @@ allow = [
     "CC0-1.0",
     # webpki-roots ships the Mozilla CA bundle under CDLA-Permissive-2.0.
     "CDLA-Permissive-2.0",
+    # option-ext (transitive: sigstore-trust-root -> tough -> directories ->
+    # dirs-sys -> option-ext) is MPL-2.0. MPL-2.0 is OSI/FSF-approved file-level
+    # weak copyleft: it only obliges sharing changes to MPL-licensed FILES, and we
+    # do not modify option-ext — so it imposes no obligation on apohara-sealchain's
+    # own MIT/Apache-2.0 source. Accepted for this transitive build/cache-dir dep.
+    "MPL-2.0",
 ]
 confidence-threshold = 0.9
 

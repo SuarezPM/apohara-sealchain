@@ -1,7 +1,7 @@
 {
   "name": "@apohara/sealchain",
-  "version": "0.1.0",
-  "description": "npx wrapper that installs and runs the apohara-sealchain MCP stdio server (prebuilt binary).",
+  "version": "0.2.0",
+  "description": "npx wrapper that installs and runs the apohara-sealchain MCP server (stdio + streamable-HTTP, prebuilt binary).",
   "license": "MIT OR Apache-2.0",
   "publishConfig": {
     "access": "public"

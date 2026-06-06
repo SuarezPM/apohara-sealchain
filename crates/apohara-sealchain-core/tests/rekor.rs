@@ -21,9 +21,9 @@
 //!   `ok:false`), never a panic.
 
 use apohara_sealchain_core::{
-    load_or_generate, load_rekor_shards, resolve_rekor_shard, seal_deterministic,
+    classify_shard, load_or_generate, load_rekor_shards, resolve_rekor_shard, seal_deterministic,
     submit_rekor_anchor, verify_artifact, verify_rekor_anchor, RekorAnchor, SealedRecord,
-    DEFAULT_REKOR_V2_URL,
+    ShardActiveness, DEFAULT_REKOR_V2_URL,
 };
 use ed25519_dalek::SigningKey;
 use serde_json::{json, Value};
@@ -277,4 +277,52 @@ fn pinned_shard_has_fingerprint_and_provenance() {
     assert_eq!(shard.origin, "log2025-1.rekor.sigstore.dev");
     assert_eq!(shard.key_sha256.len(), 64, "sha256 hex fingerprint");
     assert!(shard.public_key_pem.contains("BEGIN PUBLIC KEY"));
+}
+
+// --- B-1a: seal-time stale-shard classification (pure, no network) ----------
+
+#[test]
+fn classify_shard_stale_aborts() {
+    // The active set lists a NEW shard; our default rotated out -> must abort
+    // (real-or-abort) rather than silently anchor to a deprecated shard.
+    let active = vec!["https://log2026-1.rekor.sigstore.dev".to_string()];
+    let err = classify_shard(DEFAULT_REKOR_V2_URL, &active)
+        .expect_err("a stale default shard must abort the seal");
+    let msg = err.to_string();
+    assert!(
+        msg.contains("stale Rekor shard"),
+        "explains the abort: {msg}"
+    );
+    assert!(
+        msg.contains(DEFAULT_REKOR_V2_URL),
+        "names the stale URL: {msg}"
+    );
+}
+
+#[test]
+fn classify_shard_active_is_active() {
+    let active = vec![
+        DEFAULT_REKOR_V2_URL.to_string(),
+        "https://log2026-1.rekor.sigstore.dev".to_string(),
+    ];
+    assert_eq!(
+        classify_shard(DEFAULT_REKOR_V2_URL, &active).expect("active"),
+        ShardActiveness::Active
+    );
+    // A single trailing slash must not cause a false stale-abort.
+    let slashed = vec![format!("{DEFAULT_REKOR_V2_URL}/")];
+    assert_eq!(
+        classify_shard(DEFAULT_REKOR_V2_URL, &slashed).expect("active, slash-normalized"),
+        ShardActiveness::Active
+    );
+}
+
+#[test]
+fn classify_shard_empty_set_is_undeterminable() {
+    // No v2 endpoint distributed in the SigningConfig (the rollout window) -> we
+    // cannot conclude staleness, so proceed without a false abort.
+    assert_eq!(
+        classify_shard(DEFAULT_REKOR_V2_URL, &[]).expect("undeterminable"),
+        ShardActiveness::Undeterminable
+    );
 }

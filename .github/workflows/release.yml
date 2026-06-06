@@ -13,8 +13,13 @@ on:
     tags:
       - "v*"
 
+# `attestations: write` + `id-token: write` let the build job mint a SLSA build
+# provenance attestation per asset via Sigstore keyless signing (OIDC). End users
+# verify with `gh attestation verify <asset> --repo SuarezPM/apohara-sealchain`.
 permissions:
   contents: write
+  id-token: write
+  attestations: write
 
 jobs:
   build:
@@ -57,6 +62,14 @@ jobs:
       - name: Stage binary (windows)
         if: runner.os == 'Windows'
         run: copy target\${{ matrix.target }}\release\${{ matrix.bin }} ${{ matrix.asset }}
+
+      # SLSA build provenance for this asset (Sigstore keyless, runner OIDC). The
+      # attestation is bound to the asset's digest, so it covers exactly the bytes
+      # uploaded below. Verify: gh attestation verify <asset> --repo SuarezPM/apohara-sealchain
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-path: ${{ matrix.asset }}
 
       - name: Upload Release asset
         uses: softprops/action-gh-release@v2

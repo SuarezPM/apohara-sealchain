@@ -68,8 +68,9 @@ pub use keystore::{
 };
 #[cfg(feature = "native")]
 pub use layers::rekor::{
-    load_shards as load_rekor_shards, resolve_shard as resolve_rekor_shard,
-    submit as submit_rekor_anchor, verify_anchor as verify_rekor_anchor, RekorAnchor, ShardKey,
+    check_shard_active, classify_shard, load_shards as load_rekor_shards,
+    resolve_shard as resolve_rekor_shard, submit as submit_rekor_anchor,
+    verify_anchor as verify_rekor_anchor, RekorAnchor, ShardActiveness, ShardKey,
     DEFAULT_REKOR_V2_URL,
 };
 #[cfg(feature = "native")]
@@ -80,7 +81,10 @@ pub use layers::tsa::{
 pub use policy::{
     evaluate as evaluate_policy, evaluate_now as evaluate_policy_now, Policy, PolicyReport,
 };
-pub use provenance::{provenance_statement, PREDICATE_TYPE_V1, STATEMENT_TYPE_V1};
+pub use provenance::{
+    model_signing_statement, provenance_statement, MODEL_SIGNING_PREDICATE_TYPE_V1,
+    PREDICATE_TYPE_V1, STATEMENT_TYPE_V1,
+};
 pub use schema::{detect_schema, SchemaVersion, SealBlock, SealedRecord};
 pub use seal::{build_preimage, seal_deterministic};
 pub use trust_profile::{

@@ -1,0 +1,10 @@
+{
+  "_comment": "Vendored structural descriptor for emitting an apohara-sealchain receipt as a model-transparency / OpenSSF Model Signing (OMS) compatible in-toto Statement. This is NOT a formal JSON Schema: the upstream format is described in prose (README/spec), not a single published pinned schema artifact, so — like packaging/SCHEMAS.md — this is a structural-lint target. The shape-test asserts the emitted Statement conforms to the keys + pinned predicateType below.",
+  "source": "sigstore/model-transparency README (in-toto Statement; predicateType https://model_signing/signature/v1.0; subjects = list of (file path, sha256 digest) pairs) — https://github.com/sigstore/model-transparency. OMS standard successor: https://github.com/ossf/model-signing-spec.",
+  "pinnedAt": "2026-06-06",
+  "statementType": "https://in-toto.io/Statement/v1",
+  "predicateType": "https://model_signing/signature/v1.0",
+  "requiredStatementKeys": ["_type", "subject", "predicateType", "predicate"],
+  "requiredSubjectKeys": ["name", "digest"],
+  "requiredDigestAlgs": ["sha256"]
+}

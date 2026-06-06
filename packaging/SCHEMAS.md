@@ -38,6 +38,20 @@ running a formal JSON-Schema validator.
   the attestation-policy engine, and the transparency dashboard. The
   human-readable rendering is [`../docs/TRUST-PROFILE.md`](../docs/TRUST-PROFILE.md).
 
+## `receipt.schema.json` — the `apohara-seal-v1` receipt
+
+- Source: this project's own `apohara-seal-v1` wire format (no external standard).
+  It is the machine-readable schema for an `<artifact>.seal.json` receipt.
+- Shape: top-level `payload` (object, `artifactSha256` required) + `seal`
+  (`method`, `sealedAt`, `preimage`, `hmac` required; `ed25519`,
+  `ed25519PublicKey`, `c2paManifest` | `c2paEmbedded`, `tsa`, `rekorAnchor`
+  optional).
+- The authoritative prose + verify semantics live in [`../SPEC.md`](../SPEC.md);
+  the **per-field compatibility matrix** (since-version, required/optional, native
+  vs WASM verifier coverage) is
+  [`SPEC.md §5.1`](../SPEC.md#51-field-compatibility-matrix). New fields are added
+  only as optional, so a newer receipt stays readable by an older verifier.
+
 ## Attestation policy files (`.toml`)
 
 - Source: this project's `Policy` type (declarative TOML, `deny_unknown_fields`).

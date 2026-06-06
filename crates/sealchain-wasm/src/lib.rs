@@ -150,7 +150,8 @@ mod tests {
         std::fs::write(&artifact, b"apohara-sealchain wasm verifier test bytes").expect("write");
 
         // c2pa = true so the receipt carries a real JUMBF sidecar.
-        let record = seal_artifact(&artifact, &keys, None, true, false, None, None).expect("seal");
+        let record =
+            seal_artifact(&artifact, &keys, None, true, false, None, None, false).expect("seal");
         let receipt_json = serde_json::to_string(&record).expect("serialize receipt");
         let file_bytes = std::fs::read(&artifact).expect("read artifact");
 
@@ -187,7 +188,8 @@ mod tests {
         let artifact = dir.path().join("data.bin");
         std::fs::write(&artifact, b"original-bytes").expect("write");
 
-        let record = seal_artifact(&artifact, &keys, None, true, false, None, None).expect("seal");
+        let record =
+            seal_artifact(&artifact, &keys, None, true, false, None, None, false).expect("seal");
         let receipt_json = serde_json::to_string(&record).expect("serialize receipt");
 
         // Verify against DIFFERENT bytes than were sealed (a tampered artifact).

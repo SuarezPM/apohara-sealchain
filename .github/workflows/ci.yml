@@ -57,6 +57,31 @@ jobs:
           # Uses the repo's .gitleaks.toml.
           GITLEAKS_CONFIG: .gitleaks.toml
 
+  verify-offline-isolation:
+    # Locks the headline invariant (plan B-1b): the OFFLINE verify path links NO
+    # network client. The `verify-only` feature (the wasm in-browser verifier
+    # subset) must pull none of reqwest/tokio/sigstore — so `verify` cannot make a
+    # network call even by accident. A future edit that drags a network dependency
+    # into the verify path breaks this job. (The native Rekor/TSA verify use only
+    # offline crypto crates — sigstore-merkle/sigstore-crypto — and the
+    # frozen-anchor tests in tests/rekor.rs prove they verify from the receipt plus
+    # the pinned shard key alone, with no network.)
+    name: verify offline isolation (no network deps)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Assert the verify-only build links no network client
+        run: |
+          tree="$(cargo tree -p apohara-sealchain-core --no-default-features --features verify-only -e normal)"
+          if echo "$tree" | grep -qiE 'reqwest|tokio|sigstore|hyper|tough'; then
+            echo "::error::verify-only build pulled a network dependency — the offline verify invariant is broken."
+            echo "$tree" | grep -iE 'reqwest|tokio|sigstore|hyper|tough'
+            exit 1
+          fi
+          echo "ok: the verify-only build links no reqwest/tokio/sigstore/hyper"
+
   deny:
     name: deny (cargo-deny)
     runs-on: ubuntu-latest
@@ -106,3 +131,45 @@ jobs:
           cargo audit \
             --ignore RUSTSEC-2023-0071 \
             --ignore RUSTSEC-2024-0370
+
+  provenance-honesty:
+    # Honesty gate (plan A-1): the literal "SLSA Build L3" may appear in the docs
+    # ONLY once a real release attestation has been verified and that evidence is
+    # recorded in docs/SLSA-L3-EVIDENCE.md. Until then the README states the
+    # honest "build provenance (L2+)". This blocks over-claiming the provenance
+    # level ahead of evidence — the same measure-don't-assert discipline the tool
+    # applies to its own layers.
+    name: provenance honesty (no unverified L3 claim)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Forbid an unverified "SLSA Build L3" claim
+        run: |
+          if grep -rqF "SLSA Build L3" README.md docs/ 2>/dev/null \
+             && [ ! -f docs/SLSA-L3-EVIDENCE.md ]; then
+            echo "::error::'SLSA Build L3' is claimed without docs/SLSA-L3-EVIDENCE.md — overclaim blocked."
+            exit 1
+          fi
+          echo "ok: no unverified L3 claim in README/docs"
+
+  bench-smoke:
+    # Smoke test for scripts/bench.sh: assert it runs and produces a table. This
+    # is NOT a performance gate — no throughput threshold is asserted, so it can
+    # never flake on a slow runner. Restricted to push (not every PR): it needs a
+    # cold release build of the heavy c2pa/sigstore tree, so gating it to pushes
+    # keeps PR CI fast.
+    name: bench smoke (no threshold)
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+      - name: Cache cargo artifacts
+        uses: Swatinem/rust-cache@v2
+      - name: Build release binary
+        run: cargo build --release -p apohara-sealchain
+      - name: Run bench smoke (small N) and assert a table was produced
+        run: |
+          bash scripts/bench.sh 20 256 | tee bench-smoke.md
+          grep -qF '| Operation |' bench-smoke.md

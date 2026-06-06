@@ -42,6 +42,7 @@ native = [
     "dep:sigstore-rekor",
     "dep:sigstore-merkle",
     "dep:sigstore-crypto",
+    "dep:sigstore-trust-root",
     "dep:reqwest",
     "dep:scrypt",
     "dep:chacha20poly1305",
@@ -102,6 +103,12 @@ rustls-pki-types = { version = "1.14", optional = true }
 sigstore-rekor = { version = "0.6.6", optional = true }
 sigstore-merkle = { version = "0.6.6", optional = true }
 sigstore-crypto = { version = "0.6.6", optional = true }
+# B-1a seal-time stale-shard detection: parse the TUF-distributed Sigstore
+# SigningConfig to learn the active Rekor v2 shard URL(s) and abort a seal that
+# would anchor to a deprecated (rotated-out) shard. Same sigstore-* 0.6.6 family
+# (shares sigstore-types); the default `tuf` feature pulls the `tough` TUF client.
+# Native/seal-time only — never linked into the offline verify path.
+sigstore-trust-root = { version = "0.6.6", optional = true }
 # The Rekor v2 shard exposes `/api/v2/checkpoint` (200) but not the v1 log-info
 # endpoint `sigstore-rekor`'s `get_log_info` hits, so the pre-submit health check
 # is a direct GET. rustls matches `sigstore-rekor`'s default feature (one TLS

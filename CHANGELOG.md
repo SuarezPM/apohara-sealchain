@@ -7,7 +7,59 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.1.0] - Unreleased
+## [0.2.0] - 2026-06-06
+
+### Added
+
+- **HuggingFace seal Action** (`.github/actions/huggingface-seal`): a composite
+  Action that seals a model file, **verifies the receipt locally**, and uploads the
+  `.seal.json` to the model repo — but only when an `hf_token` is supplied;
+  otherwise it is a dry-run (seal + verify, no publish). Reproducible offline via
+  `examples/huggingface/hf-action-dryrun.sh`.
+- **MCP streamable-HTTP transport** (`mcp --http <host:port>`): serve the MCP
+  server over streamable-HTTP (endpoint `/mcp`) for remote/CI use, alongside the
+  default stdio transport. Adds the rmcp `transport-streamable-http-server` feature
+  and an `axum` dependency. **No authentication** — the default config restricts the
+  `Host` header to loopback (DNS-rebinding mitigation); bind only to a trusted
+  address or front it with an authenticating reverse proxy.
+- **C2PA AI-generated disclosure** (`seal --ai-generated`, MCP `ai_generated`): records
+  the IPTC `trainedAlgorithmicMedia` digital source type (C2PA 2.x) in the created
+  action of the C2PA manifest, in **both** sidecar and embedded modes — for AI-content
+  disclosure (e.g. EU AI Act Art. 50). Opt-in; without the flag the source type stays
+  `empty` (no claim about how the content was produced).
+- **Model-transparency interop for `provenance`**: `provenance --format model-signing`
+  emits an in-toto Statement in the model-transparency / OpenSSF Model Signing shape
+  (`predicateType https://model_signing/signature/v1.0`, subject = the artifact's
+  `(path, sha256)`), so ML-signing-ecosystem consumers can match the artifact digest.
+  The default `--format apohara` keeps the native `apohara.dev/sealchain/provenance/v1`
+  predicate (never renamed to `slsa.dev`). The interop predicate cross-links to the
+  native one rather than restating it. Vendored shape descriptor:
+  `packaging/model-signing-schema.json`.
+- **Seal-time stale-shard guard for Rekor v2** (`--rekor`): before submitting, the
+  seal compares the target shard against the **active** Rekor v2 endpoints in the
+  TUF-distributed Sigstore `SigningConfig`. A shard that has rotated out of the
+  active set **aborts** the seal (real-or-abort) instead of silently anchoring to a
+  deprecated shard; an undeterminable active set proceeds and records
+  `seal.rekorAnchor.shardActiveness = "undeterminable"`. New dependency
+  `sigstore-trust-root` (same sigstore-* 0.6.6 family; default `tuf` feature pulls
+  the `tough` TUF client), native/seal-time only — never linked into the offline
+  verify path.
+
+### Security
+
+- **CI now enforces the offline-verify invariant**: a `verify-offline-isolation`
+  job asserts the `verify-only` build links no network client
+  (reqwest/tokio/sigstore/tough), so `verify` cannot make a network call by
+  accident.
+
+### Changed
+
+- `deny.toml`: allow `MPL-2.0` for the transitive `option-ext` crate (pulled via
+  `tough -> directories -> dirs-sys`); file-level weak copyleft, not modified, so
+  no obligation on this project's own MIT/Apache-2.0 source. MSRV is unchanged
+  (1.88; the new TUF deps declare lower floors).
+
+## [0.1.0] - 2026-06-05
 
 Initial release of **apohara-sealchain** — verifiable, tamper-evident receipts for AI
 artifacts, exposed as both a CLI and an MCP (Model Context Protocol) server.

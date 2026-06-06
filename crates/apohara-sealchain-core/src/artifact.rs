@@ -115,6 +115,10 @@ fn decode_hex0x(s: &str) -> Option<Vec<u8>> {
 /// This makes a network call to the shard. The default (`None`) keeps the offline
 /// behavior unchanged.
 #[cfg(feature = "native")]
+// Eight independent seal knobs (key material, timestamp, and one flag/endpoint per
+// optional layer). They are genuinely orthogonal inputs, not incidental coupling, so
+// a flat signature reads more clearly at the call sites than a one-off options struct.
+#[allow(clippy::too_many_arguments)]
 pub fn seal_artifact(
     path: &Path,
     keys: &Keys,
@@ -123,10 +127,19 @@ pub fn seal_artifact(
     embed: bool,
     tsa: Option<&str>,
     rekor: Option<&str>,
+    ai_generated: bool,
 ) -> Result<SealedRecord, SealError> {
     if embed && !c2pa {
         return Err(SealError::C2pa(
             "--embed requires the C2PA layer (do not combine with --no-c2pa)".into(),
+        ));
+    }
+    // AI-generated disclosure lives in the C2PA manifest, so it cannot be honored
+    // without the C2PA layer — fail loudly rather than silently drop the flag (the
+    // same no-silent-fallback discipline as `embed` above).
+    if ai_generated && !c2pa {
+        return Err(SealError::C2pa(
+            "--ai-generated requires the C2PA layer (do not combine with --no-c2pa)".into(),
         ));
     }
 
@@ -137,7 +150,7 @@ pub fn seal_artifact(
     // format (hard error on unsupported — never a silent sidecar fallback), embed,
     // rewrite the artifact, and hash the FINAL embedded bytes.
     let bytes = if embed {
-        embed_into_file(path, &bytes, &keys.ed25519)?
+        embed_into_file(path, &bytes, &keys.ed25519, ai_generated)?
     } else {
         bytes
     };
@@ -173,7 +186,7 @@ pub fn seal_artifact(
             // receipt records the mode rather than carrying sidecar bytes.
             record.seal.c2pa_embedded = Some(true);
         } else {
-            let jumbf = c2pa::emit_sidecar(&record.payload, &keys.ed25519)?;
+            let jumbf = c2pa::emit_sidecar(&record.payload, &keys.ed25519, ai_generated)?;
             record.seal.c2pa_manifest = Some(format!("0x{}", hex::encode(&jumbf)));
         }
     }
@@ -191,8 +204,16 @@ pub fn seal_artifact(
     if let Some(shard_url) = rekor {
         let preimage = decode_hex0x(&record.seal.preimage)
             .ok_or_else(|| SealError::InvalidPreimage(record.seal.preimage.clone()))?;
+        // B-1a: refuse to anchor to a shard that has rotated out of the active set
+        // (the TUF-distributed SigningConfig). A provably-stale shard aborts here
+        // (real-or-abort); otherwise record whether activeness was confirmed.
+        let activeness = rekor::check_shard_active(shard_url)?;
         let anchor = rekor::submit(&preimage, &keys.ed25519, shard_url)?;
-        record.seal.rekor_anchor = Some(anchor.to_json());
+        let mut anchor_json = anchor.to_json();
+        if let Some(obj) = anchor_json.as_object_mut() {
+            obj.insert("shardActiveness".to_string(), json!(activeness.as_str()));
+        }
+        record.seal.rekor_anchor = Some(anchor_json);
     }
 
     Ok(record)
@@ -218,6 +239,7 @@ fn embed_into_file(
     path: &Path,
     original_bytes: &[u8],
     signer_key: &ed25519_dalek::SigningKey,
+    ai_generated: bool,
 ) -> Result<Vec<u8>, SealError> {
     let ext = extension_lossy(path);
     if !c2pa::is_embeddable_extension(&ext) {
@@ -230,7 +252,7 @@ Use the offline sidecar (omit --embed) for other formats.",
         )));
     }
 
-    let embedded = c2pa::embed_manifest(original_bytes, &ext, signer_key)?;
+    let embedded = c2pa::embed_manifest(original_bytes, &ext, signer_key, ai_generated)?;
     std::fs::write(path, &embedded)
         .map_err(|e| SealError::Malformed(format!("rewrite embedded {}: {e}", path.display())))?;
     Ok(embedded)
@@ -297,6 +319,13 @@ pub fn verify_artifact(
 /// the sigstore stack + pinned shard keys). In the `verify-only` (wasm) build
 /// they are reported as **present but not verified in this build** — honest, not
 /// a faked pass — matching the offline-build contract.
+///
+/// **Offline invariant (CI-enforced).** This path makes no network call in any
+/// build. The `verify-only` feature links none of reqwest/tokio/sigstore — the
+/// `verify offline isolation` CI job asserts the dependency tree stays clean — and
+/// the native Rekor/TSA verification uses only offline crypto
+/// (sigstore-merkle / sigstore-crypto) over the receipt plus the pinned shard key,
+/// never the network (the frozen-anchor tests in `tests/rekor.rs` prove it).
 pub fn verify_artifact_bytes(
     file_bytes: &[u8],
     receipt: &SealedRecord,
@@ -653,7 +682,8 @@ mod tests {
         let artifact = dir.path().join("data.txt");
         std::fs::write(&artifact, b"apohara-sealchain artifact bytes").expect("write");
 
-        let record = seal_artifact(&artifact, &keys, None, false, false, None, None).expect("seal");
+        let record =
+            seal_artifact(&artifact, &keys, None, false, false, None, None, false).expect("seal");
         let results = verify_artifact(&artifact, &record, Some(&keys.hmac)).expect("verify");
 
         assert!(overall_ok(&results), "all layers should verify");
@@ -673,7 +703,8 @@ mod tests {
         let artifact = dir.path().join("data.bin");
         std::fs::write(&artifact, b"original-bytes").expect("write");
 
-        let record = seal_artifact(&artifact, &keys, None, false, false, None, None).expect("seal");
+        let record =
+            seal_artifact(&artifact, &keys, None, false, false, None, None, false).expect("seal");
         // Flip one byte of the file (receipt unchanged).
         std::fs::write(&artifact, b"Original-bytes").expect("rewrite");
 
@@ -692,7 +723,7 @@ mod tests {
         std::fs::write(&artifact, b"payload tamper case").expect("write");
 
         let mut record =
-            seal_artifact(&artifact, &keys, None, false, false, None, None).expect("seal");
+            seal_artifact(&artifact, &keys, None, false, false, None, None, false).expect("seal");
         // Tamper the receipt payload (mime), leaving the preimage stale.
         record.payload["mime"] = Value::String("tampered/type".to_string());
 
@@ -713,7 +744,8 @@ mod tests {
         std::fs::write(&artifact, b"c2pa sidecar artifact").expect("write");
 
         // c2pa = true emits a real JUMBF sidecar into seal.c2paManifest.
-        let record = seal_artifact(&artifact, &keys, None, true, false, None, None).expect("seal");
+        let record =
+            seal_artifact(&artifact, &keys, None, true, false, None, None, false).expect("seal");
         let manifest = record
             .seal
             .c2pa_manifest
@@ -741,7 +773,8 @@ mod tests {
         let artifact = dir.path().join("data.txt");
         std::fs::write(&artifact, b"no sidecar here").expect("write");
 
-        let record = seal_artifact(&artifact, &keys, None, false, false, None, None).expect("seal");
+        let record =
+            seal_artifact(&artifact, &keys, None, false, false, None, None, false).expect("seal");
         assert!(record.seal.c2pa_manifest.is_none(), "no c2paManifest field");
 
         let results = verify_artifact(&artifact, &record, Some(&keys.hmac)).expect("verify");
@@ -759,7 +792,7 @@ mod tests {
         std::fs::write(&artifact, b"c2pa tamper case").expect("write");
 
         let mut record =
-            seal_artifact(&artifact, &keys, None, true, false, None, None).expect("seal");
+            seal_artifact(&artifact, &keys, None, true, false, None, None, false).expect("seal");
         // Tamper the receipt payload: the canonical hash no longer matches the
         // hash bound in the (still-valid) C2PA manifest, so the c2pa layer fails.
         record.payload["mime"] = Value::String("tampered/type".to_string());
@@ -780,7 +813,7 @@ mod tests {
         std::fs::write(&artifact, b"x").expect("write");
 
         let mut record =
-            seal_artifact(&artifact, &keys, None, false, false, None, None).expect("seal");
+            seal_artifact(&artifact, &keys, None, false, false, None, None, false).expect("seal");
         record
             .payload
             .as_object_mut()
@@ -810,8 +843,8 @@ mod tests {
         std::fs::write(&artifact, tiny_png()).expect("write png");
 
         // Seal with --embed: the manifest goes INTO the PNG.
-        let record =
-            seal_artifact(&artifact, &keys, None, true, true, None, None).expect("embed seal");
+        let record = seal_artifact(&artifact, &keys, None, true, true, None, None, false)
+            .expect("embed seal");
 
         // The receipt records the embedded mode, NOT a sidecar manifest.
         assert_eq!(
@@ -874,7 +907,7 @@ mod tests {
         std::fs::write(&artifact, &original).expect("write");
 
         // --embed on an unsupported format is a hard error, never a sidecar.
-        let err = seal_artifact(&artifact, &keys, None, true, true, None, None)
+        let err = seal_artifact(&artifact, &keys, None, true, true, None, None, false)
             .expect_err("unsupported embed must error");
         assert!(matches!(err, SealError::C2pa(_)), "got: {err:?}");
 
@@ -891,7 +924,7 @@ mod tests {
         std::fs::write(&artifact, tiny_png()).expect("write png");
 
         // embed=true with c2pa=false is rejected before any file mutation.
-        let err = seal_artifact(&artifact, &keys, None, false, true, None, None)
+        let err = seal_artifact(&artifact, &keys, None, false, true, None, None, false)
             .expect_err("embed without c2pa must error");
         assert!(matches!(err, SealError::C2pa(_)), "got: {err:?}");
         assert_eq!(
@@ -902,14 +935,28 @@ mod tests {
     }
 
     #[test]
+    fn ai_generated_requires_c2pa() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let keys = load_or_generate(Some(dir.path())).expect("keys");
+        let artifact = dir.path().join("data.bin");
+        std::fs::write(&artifact, b"some bytes").expect("write");
+
+        // ai_generated=true with c2pa=false is rejected (the disclosure lives in
+        // the C2PA manifest) — no silent drop, no receipt written.
+        let err = seal_artifact(&artifact, &keys, None, false, false, None, None, true)
+            .expect_err("ai-generated without c2pa must error");
+        assert!(matches!(err, SealError::C2pa(_)), "got: {err:?}");
+    }
+
+    #[test]
     fn embedded_tamper_trips_c2pa_or_content() {
         let dir = tempfile::tempdir().expect("tempdir");
         let keys = load_or_generate(Some(dir.path())).expect("keys");
         let artifact = dir.path().join("photo.png");
         std::fs::write(&artifact, tiny_png()).expect("write png");
 
-        let record =
-            seal_artifact(&artifact, &keys, None, true, true, None, None).expect("embed seal");
+        let record = seal_artifact(&artifact, &keys, None, true, true, None, None, false)
+            .expect("embed seal");
         let embedded = std::fs::read(&artifact).expect("read embedded");
 
         // Flip a byte in the embedded image-data region: the content layer (and/or

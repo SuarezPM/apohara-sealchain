@@ -217,6 +217,98 @@ pub fn resolve_shard<'a>(shards: &'a [ShardKey], log_id: &str) -> Option<&'a Sha
     shards.iter().find(|s| s.log_id == log_id)
 }
 
+/// Whether the seal-time default Rekor shard is in the currently-active set, per
+/// the TUF-distributed Sigstore SigningConfig (plan B-1a). "Active" means "present
+/// in the SigningConfig's valid v2 endpoint set", not "the single newest shard" —
+/// overlapping validity windows can leave more than one shard active. A *stale*
+/// shard (rotated out of the valid set) is never recorded — it aborts the seal
+/// (real-or-abort); only the two states below reach a receipt, in
+/// `seal.rekorAnchor.shardActiveness`.
+#[cfg(feature = "native")]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ShardActiveness {
+    /// The shard URL is in the SigningConfig's active Rekor v2 endpoint set.
+    Active,
+    /// The SigningConfig lists no Rekor v2 endpoint (the v2 rollout window) or
+    /// could not be fetched, so staleness cannot be determined — the seal proceeds
+    /// against the pinned default, and the receipt says so honestly.
+    Undeterminable,
+}
+
+#[cfg(feature = "native")]
+impl ShardActiveness {
+    /// Lowercase tag recorded in the receipt.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            ShardActiveness::Active => "active",
+            ShardActiveness::Undeterminable => "undeterminable",
+        }
+    }
+}
+
+/// Classify `shard_url` against the SigningConfig's `active_v2_urls`.
+///
+/// * non-empty set containing `shard_url` → [`ShardActiveness::Active`].
+/// * non-empty set NOT containing it → [`Err`] (stale shard → abort the seal).
+/// * empty set → [`ShardActiveness::Undeterminable`] (no v2 endpoint distributed
+///   yet, so staleness is not knowable).
+///
+/// Pure (no network), so the abort path is unit-testable. Comparison normalizes
+/// trailing slashes on both sides. This is the honest core of B-1a: it converts the
+/// previously-silent "anchored to a rotated-out shard" path into a loud abort,
+/// while never false-aborting when the active set is simply unknown.
+#[cfg(feature = "native")]
+pub fn classify_shard(
+    shard_url: &str,
+    active_v2_urls: &[String],
+) -> Result<ShardActiveness, SealError> {
+    if active_v2_urls.is_empty() {
+        return Ok(ShardActiveness::Undeterminable);
+    }
+    let norm = |u: &str| u.trim_end_matches('/').to_string();
+    let target = norm(shard_url);
+    if active_v2_urls.iter().any(|u| norm(u) == target) {
+        Ok(ShardActiveness::Active)
+    } else {
+        Err(SealError::Rekor(format!(
+            "refusing to anchor to a stale Rekor shard: {shard_url} is not in the active Rekor v2 \
+             set from the Sigstore SigningConfig ({}). The active shard has rotated — pass \
+             `--rekor <active-url>` and add the new shard key to packaging/rekor-shards.json.",
+            active_v2_urls.join(", ")
+        )))
+    }
+}
+
+/// Fetch the active Rekor v2 endpoint URLs from the live TUF-distributed Sigstore
+/// SigningConfig. A fetch/parse failure maps to an empty set (→ `Undeterminable`
+/// upstream), not an error: we cannot conclude a shard is stale merely because TUF
+/// was unreachable, and the submit's own health-check still guards a down shard.
+#[cfg(feature = "native")]
+fn fetch_active_v2_rekor_urls() -> Vec<String> {
+    let Ok(runtime) = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+    else {
+        return Vec::new();
+    };
+    let Ok(cfg) = runtime.block_on(sigstore_trust_root::SigningConfig::production()) else {
+        return Vec::new();
+    };
+    cfg.get_rekor_urls(Some(2))
+        .into_iter()
+        .map(|e| e.url.clone())
+        .collect()
+}
+
+/// Seal-time stale-shard guard (plan B-1a). Determine whether `shard_url` is the
+/// active Rekor v2 shard per the TUF SigningConfig: returns `Active`/
+/// `Undeterminable` to record in the receipt, or [`Err`] (abort) if the shard is
+/// provably stale. Never writes the pin and never touches the verify path.
+#[cfg(feature = "native")]
+pub fn check_shard_active(shard_url: &str) -> Result<ShardActiveness, SealError> {
+    classify_shard(shard_url, &fetch_active_v2_rekor_urls())
+}
+
 /// Submit a real Rekor v2 DSSE entry anchoring `preimage`, signed by the SEAL's
 /// Ed25519 key, to the shard at `shard_url`. Returns the mapped [`RekorAnchor`].
 ///

@@ -107,11 +107,13 @@ Each layer below documents *exactly* what bytes it binds. Two layers (C2PA, Reko
   - `canonicalizedBody` is base64 of the canonicalized Rekor entry body (the Merkle leaf preimage).
   - `envelope` is the submitted DSSE envelope (`payloadType`, base64 `payload`, `signatures[]`).
   - `verifier` is `{ publicKey: { rawBytes: <base64 SPKI DER> }, keyDetails: "PKIX_ED25519" }`.
+  - `shardActiveness` *(optional, since 0.2.0)* — `"active"` if the seal-time guard found the shard **in the active Rekor v2 endpoint set** of the Sigstore SigningConfig (note: overlapping validity windows can leave more than one shard active, so this means "in the valid set", not "the single newest shard"), or `"undeterminable"` if that could not be determined (no v2 endpoint distributed, or TUF unreachable). A *stale* shard (rotated out of the valid set) never appears here: it aborts the seal (see the seal-time guard below). Recorded for observability; the verifier does not require it.
 - **Sibling layer, NOT part of the preimage** — adding it never changes the seal.
 - **Offline pass bar (BOTH required):**
   1. **RFC 6962 Merkle inclusion** — the leaf is `sha256(0x00 || canonicalizedBody)`; chaining it with the proof `hashes` must reproduce `inclusionProof.rootHash`. Merkle-structure-only is **not** a pass.
   2. **C2SP checkpoint signature** — the Ed25519 signature over the **full** signed-note body (origin, tree size, root hash, and any extension lines — not header-only) must verify against the **pinned shard log key** resolved by `logId`. The checkpoint's root hash must also equal the inclusion proof's root hash.
 - **Config-driven shard key:** the v2 shard URL and its log public key are **not** TUF-distributed to clients yet and the active shard rotates roughly every six months, so they live in `packaging/rekor-shards.json` (pinned with provenance), resolved by `logId`. Rotating a shard is a **config update + rebuild**, not a protocol change; frozen anchors keep verifying across rotations as long as the old shard's entry stays listed.
+- **Seal-time stale-shard guard (since 0.2.0):** before submitting, the seal compares the target shard URL against the **active** Rekor v2 endpoint set in the TUF-distributed Sigstore `SigningConfig`. If the shard has rotated out of the active set, the seal **aborts** (real-or-abort) instead of silently anchoring to a deprecated shard; if the active set cannot be determined (the SigningConfig lists no v2 endpoint yet, or TUF is unreachable), the seal proceeds and records `shardActiveness: "undeterminable"`. This guard is **seal-time only** — it makes a network call as part of `--rekor`, never writes the pinned key set, and never runs on the offline verify path.
 - **Unknown shard key** (no config match for the anchor's `logId`) → a **measured** `ok: false` with reason `log key unknown for logId <id>` — never an `Err`, never a silent pass.
 - **Network:** submitted on demand (`--rekor`), verified offline from the bundled proof + pinned key.
 
@@ -132,6 +134,10 @@ Each layer below documents *exactly* what bytes it binds. Two layers (C2PA, Reko
 #### 3.5.1 C2PA in-file embedding (`--embed`) — supported media
 
 When `--embed` is used (CLI) or `embed=true` (MCP), the C2PA manifest is embedded **inside the artifact file** instead of carried as a sidecar. This uses c2pa-rs's **native in-file hard binding** — the `c2pa.hash.data` assertion c2pa computes over the asset bytes (excluding the manifest region) — which is what proves the embedded file's integrity. The `apohara.seal.payloadHash` assertion is **not** added in embed mode: binding it would be circular, since the seal's payload hash is over `artifactSha256`, which is itself `sha256(embedded bytes)`. The apohara-sealchain payload is still produced and signed by the surrounding HMAC/Ed25519 (and optional TSA/Rekor) layers over the **final embedded file**.
+
+#### 3.5.2 AI-generated disclosure (`--ai-generated`)
+
+With `--ai-generated` (CLI) or `ai_generated=true` (MCP), the C2PA created action records the **digital source type** `http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia` (IPTC / C2PA 2.x) — the disclosure that the asset is AI-generated media, relevant to regimes such as EU AI Act Art. 50. It is recorded in **both** sidecar and embedded modes (the anti-circularity exclusion of `apohara.seal.payloadHash` from embed mode does not apply — the source type is not derived from the payload hash). It is **opt-in**: without the flag the created action's source type is `http://c2pa.org/digitalsourcetype/empty` (no claim about how the content was produced). The flag is a disclosure the sealer makes; apohara-sealchain does not itself detect AI generation.
 
 - **Order of operations:** (1) read the original media; (2) embed the manifest (`no_embed=false`) signed with the seal key (same `CallbackSigner` + self-signed cert as the sidecar), writing the embedded asset; (3) **rewrite the artifact file in place** with the embedded bytes; (4) compute `artifactSha256/size/mime` from the **final embedded file**; (5) run HMAC/Ed25519 (and any requested TSA/Rekor) over that payload; (6) write the `.seal.json` sidecar.
 - **Receipt:** `seal.c2paEmbedded = true` (and **no** `c2paManifest` — the two are mutually exclusive). The in-file manifest is read directly from the artifact on verify.
@@ -219,6 +225,33 @@ Every field, with type and example (drawn from a real default receipt and the fr
 ```
 
 **Required vs. optional.** Top-level `payload` and `seal` are required. Inside `seal`: `method`, `sealedAt`, `preimage`, and `hmac` are required; `ed25519`, `ed25519PublicKey`, `c2paManifest`, `c2paEmbedded`, `tsa`, `rekorAnchor` are optional and serialized only when present. `c2paManifest` (sidecar) and `c2paEmbedded` (in-file) are mutually exclusive — a receipt carries at most one C2PA mode. Inside `payload`, only `artifactSha256` is required by the verifier's content layer (the seal engine itself will canonicalize any JSON object payload).
+
+### 5.1 Field compatibility matrix
+
+Per-field versioning and verifier coverage for `apohara-seal-v1`. The machine-readable
+schema is [`packaging/receipt.schema.json`](packaging/receipt.schema.json); this table is its
+human-readable companion. "Native" = the CLI, the MCP server, and the thin Python/Node SDKs
+(which wrap the CLI). "WASM" = the offline in-browser `verify-only` build.
+
+| Field | Since | Required | Native verify | WASM (verify-only) |
+|-------|-------|----------|---------------|--------------------|
+| `payload.artifactSha256` | 0.1.0 | **required** | content layer | content layer |
+| `seal.method` | 0.1.0 | **required** | ✓ | ✓ |
+| `seal.sealedAt` | 0.1.0 | **required** (schema gate) | ✓ | ✓ |
+| `seal.preimage` | 0.1.0 | **required** | ✓ | ✓ |
+| `seal.hmac` | 0.1.0 | **required** | full MAC with key; preimage-integrity without | preimage-integrity only (no key in browser) |
+| `seal.ed25519` | 0.1.0 | optional | ✓ (embedded pubkey) | ✓ |
+| `seal.ed25519PublicKey` | 0.1.0 | optional | ✓ | ✓ |
+| `seal.c2paManifest` (sidecar) | 0.1.0 | optional¹ | ✓ | ✓ |
+| `seal.c2paEmbedded` (in-file) | 0.1.0 | optional¹ | ✓ | ✓ |
+| `seal.tsa` | 0.1.0 | optional | ✓ (RFC 3161 imprint) | present, **not verified** (honest `ok:false`) |
+| `seal.rekorAnchor` | 0.1.0 | optional | ✓ (offline Merkle + checkpoint) | present, **not verified** |
+| `seal.rekorAnchor.shardActiveness` | 0.2.0 | optional | informational only (not a verify input) | informational only |
+
+¹ `c2paManifest` and `c2paEmbedded` are mutually exclusive. A verifier built before 0.2.0
+ignores `shardActiveness` (additive, optional); a 0.1.0 receipt simply omits it. New fields are
+only ever added as optional, so a newer receipt stays readable by an older verifier (the older
+verifier just does not interpret fields it predates).
 
 ---
 

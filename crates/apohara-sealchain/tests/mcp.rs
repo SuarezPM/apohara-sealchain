@@ -270,3 +270,55 @@ async fn mcp_verify_with_profile_reports_policy() {
 
     client.cancel().await.expect("clean shutdown");
 }
+
+/// B-4: the same server, served over **streamable-HTTP** (`mcp --http`), is
+/// reachable by a real HTTP MCP client and exposes the same three tools. This
+/// exercises the transport end-to-end (bind -> connect -> initialize ->
+/// list_tools) over a child process, alongside the default stdio path above.
+#[tokio::test]
+async fn mcp_streamable_http_round_trip_lists_tools() {
+    use rmcp::transport::StreamableHttpClientTransport;
+
+    // Reserve a free loopback port, then hand it to the child server.
+    let port = std::net::TcpListener::bind("127.0.0.1:0")
+        .expect("bind ephemeral")
+        .local_addr()
+        .expect("local addr")
+        .port();
+    let addr = format!("127.0.0.1:{port}");
+
+    let bin = assert_cmd::cargo::cargo_bin("apohara-sealchain");
+    let mut child = tokio::process::Command::new(bin)
+        .args(["mcp", "--http", &addr])
+        .kill_on_drop(true)
+        .spawn()
+        .expect("spawn mcp --http");
+
+    // Wait for the server to accept connections (up to ~5s).
+    let mut ready = false;
+    for _ in 0..50 {
+        if tokio::net::TcpStream::connect(&addr).await.is_ok() {
+            ready = true;
+            break;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    assert!(ready, "streamable-HTTP server did not start on {addr}");
+
+    let transport = StreamableHttpClientTransport::from_uri(format!("http://{addr}/mcp"));
+    let client = ().serve(transport).await.expect("http client connects");
+
+    let tools = client.list_all_tools().await.expect("list tools over http");
+    let names: BTreeSet<String> = tools.iter().map(|t| t.name.to_string()).collect();
+    let expected: BTreeSet<String> = ["seal_artifact", "verify_receipt", "show_chain"]
+        .into_iter()
+        .map(String::from)
+        .collect();
+    assert_eq!(
+        names, expected,
+        "the three tools are exposed over streamable-HTTP"
+    );
+
+    client.cancel().await.expect("clean shutdown");
+    let _ = child.kill().await;
+}

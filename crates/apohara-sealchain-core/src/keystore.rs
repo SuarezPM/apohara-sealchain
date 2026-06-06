@@ -783,6 +783,7 @@ mod tests {
             false,
             None,
             None,
+            false,
         )
         .expect("seal artifact");
         let serialized = serde_json::to_string(&record).expect("serialize receipt");

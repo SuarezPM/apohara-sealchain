@@ -20,7 +20,7 @@ path = "src/main.rs"
 [dependencies]
 # `version` is required alongside `path` so the published `apohara-sealchain` crate
 # resolves `apohara-sealchain-core` from crates.io. Publish order: core FIRST, then bin.
-apohara-sealchain-core = { path = "../apohara-sealchain-core", version = "0.1.0" }
+apohara-sealchain-core = { path = "../apohara-sealchain-core", version = "0.2.0" }
 serde.workspace = true
 serde_json.workspace = true
 clap.workspace = true
@@ -28,12 +28,26 @@ hex.workspace = true
 # Expand `seal` glob patterns (e.g. `*.png`) when the shell did not. Already in
 # the dependency tree transitively, so this adds no new compiled crate.
 glob = "0.3"
-rmcp = { version = "1.7.0", features = ["server", "macros", "transport-io", "schemars"] }
-tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "io-std"] }
+rmcp = { version = "1.7.0", features = [
+    "server",
+    "macros",
+    "transport-io",
+    "transport-streamable-http-server",
+    "schemars",
+] }
+tokio = { version = "1.52.3", features = ["rt-multi-thread", "macros", "io-std", "net"] }
 schemars = "1.2.1"
+# Optional remote MCP transport: serve the StreamableHttpService (a tower service)
+# over HTTP. stdio remains the default; HTTP is opt-in via `mcp --http <addr>`.
+axum = { version = "0.8", default-features = false, features = ["http1", "tokio"] }
 
 [dev-dependencies]
 assert_cmd.workspace = true
 predicates.workspace = true
-rmcp = { version = "1.7.0", features = ["client", "transport-child-process"] }
+rmcp = { version = "1.7.0", features = [
+    "client",
+    "transport-child-process",
+    "transport-streamable-http-client",
+    "transport-streamable-http-client-reqwest",
+] }
 tempfile.workspace = true

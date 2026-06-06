@@ -25,12 +25,13 @@ use std::path::{Path, PathBuf};
 use apohara_sealchain_core::{
     decrypt_keystore, default_receipt_path, encrypt_keystore, evaluate_policy_now, from_overrides,
     generated_at_now, index_find, index_insert, index_list, index_rebuild, keystore_info,
-    load_or_generate_with_passphrase, present_layers, profile_names, provenance_statement,
-    render_chain, render_dashboard, rotate_keystore, scan_receipts, seal_artifact, verify_artifact,
-    DashboardEntry, IndexRecord, Keys, KeystoreInfo, LayerResult, Policy, PolicyReport, SealError,
-    SealedRecord, VerifyStatus, DEFAULT_REKOR_V2_URL, DEFAULT_TSA_URL,
+    load_or_generate_with_passphrase, model_signing_statement, present_layers, profile_names,
+    provenance_statement, render_chain, render_dashboard, rotate_keystore, scan_receipts,
+    seal_artifact, verify_artifact, DashboardEntry, IndexRecord, Keys, KeystoreInfo, LayerResult,
+    Policy, PolicyReport, SealError, SealedRecord, VerifyStatus, DEFAULT_REKOR_V2_URL,
+    DEFAULT_TSA_URL,
 };
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use serde_json::{json, Value};
 
 /// Process exit codes.
@@ -85,8 +86,24 @@ enum Command {
     /// optional `--policy`/`--profile` compliance column. The report has no
     /// network references and re-verifies each receipt whose artifact is present.
     Dashboard(DashboardArgs),
-    /// Run the MCP server over stdio (seal_artifact/verify_receipt/show_chain).
-    Mcp,
+    /// Run the MCP server: stdio by default, or streamable-HTTP with `--http`
+    /// (seal_artifact/verify_receipt/show_chain).
+    Mcp(McpArgs),
+}
+
+#[derive(Args)]
+struct McpArgs {
+    /// Serve over streamable-HTTP at this `host:port` instead of stdio (e.g.
+    /// `127.0.0.1:8080`). The MCP endpoint is mounted at `/mcp`. Omit for the
+    /// default stdio transport.
+    ///
+    /// SECURITY: the HTTP transport has **no authentication**. Bind it only to a
+    /// loopback/trusted address (the default config restricts the `Host` header to
+    /// loopback — `localhost`/`127.0.0.1`/`::1` — to mitigate DNS-rebinding; Origin
+    /// validation is off by default). Do not expose it on an untrusted network
+    /// without a reverse proxy that adds authn; a non-loopback bind logs a warning.
+    #[arg(long)]
+    http: Option<String>,
 }
 
 #[derive(Args)]
@@ -210,6 +227,12 @@ struct SealArgs {
     /// to the sidecar. Cannot be combined with `--no-c2pa`.
     #[arg(long)]
     embed: bool,
+    /// Mark the artifact as AI-generated in the C2PA manifest: the created action
+    /// records the IPTC `trainedAlgorithmicMedia` digital source type (C2PA 2.x),
+    /// for AI-content disclosure (e.g. EU AI Act Art. 50). Opt-in; without it the
+    /// source type stays `empty` (no claim). Requires the C2PA layer.
+    #[arg(long = "ai-generated", conflicts_with = "no_c2pa")]
+    ai_generated: bool,
     /// Emit structured JSON.
     #[arg(long)]
     json: bool,
@@ -258,6 +281,20 @@ struct ProvenanceArgs {
     /// Emit compact single-line JSON (default: pretty, multi-line).
     #[arg(long)]
     json: bool,
+    /// Predicate format: `apohara` (default — the native provenance predicate) or
+    /// `model-signing` (model-transparency / OpenSSF Model Signing interop).
+    #[arg(long, value_enum, default_value_t = ProvenanceFormat::Apohara)]
+    format: ProvenanceFormat,
+}
+
+/// Output predicate shape for `provenance`.
+#[derive(Clone, Copy, ValueEnum)]
+enum ProvenanceFormat {
+    /// apohara's own in-toto predicate (`apohara.dev/sealchain/provenance/v1`).
+    Apohara,
+    /// model-transparency / OpenSSF Model Signing interop predicate.
+    #[value(name = "model-signing")]
+    ModelSigning,
 }
 
 #[derive(Args)]
@@ -344,7 +381,7 @@ pub fn run() -> i32 {
         Command::Find(args) => run_find(args),
         Command::Index(args) => run_index(args),
         Command::Dashboard(args) => run_dashboard(args),
-        Command::Mcp => run_mcp(),
+        Command::Mcp(args) => run_mcp(args),
     }
 }
 
@@ -360,12 +397,20 @@ fn resolve_passphrase(explicit: Option<&str>) -> Option<String> {
     }
 }
 
+/// Dispatch the MCP server to stdio (default) or streamable-HTTP (`--http`).
+fn run_mcp(args: McpArgs) -> i32 {
+    match args.http {
+        Some(addr) => run_mcp_http(&addr),
+        None => run_mcp_stdio(),
+    }
+}
+
 /// Run the MCP stdio server until the client disconnects.
 ///
 /// Builds a multi-threaded tokio runtime, serves [`crate::mcp::SealchainServer`]
 /// over stdio, and blocks until the peer closes the connection. The sync core is
 /// driven from blocking threads inside each tool, so the runtime stays free.
-fn run_mcp() -> i32 {
+fn run_mcp_stdio() -> i32 {
     use rmcp::transport::stdio;
     use rmcp::ServiceExt;
 
@@ -387,6 +432,65 @@ fn run_mcp() -> i32 {
         };
         if let Err(e) = service.waiting().await {
             eprintln!("ERROR: MCP server: {e}");
+            return EXIT_FAIL;
+        }
+        EXIT_OK
+    })
+}
+
+/// Run the MCP server over **streamable-HTTP** at `addr` (e.g. `127.0.0.1:8080`),
+/// mounting the MCP endpoint at `/mcp`. A fresh [`crate::mcp::SealchainServer`] is
+/// built per session via the service factory; sessions are held in-memory
+/// (`LocalSessionManager`). The default config restricts the `Host` header to
+/// loopback to mitigate DNS-rebinding — there is no authentication, so bind only
+/// to a trusted address (see `McpArgs::http`).
+fn run_mcp_http(addr: &str) -> i32 {
+    use rmcp::transport::streamable_http_server::{
+        session::local::LocalSessionManager, StreamableHttpServerConfig, StreamableHttpService,
+    };
+    use std::sync::Arc;
+
+    let runtime = match tokio::runtime::Runtime::new() {
+        Ok(rt) => rt,
+        Err(e) => {
+            eprintln!("ERROR: build async runtime: {e}");
+            return EXIT_SCHEMA;
+        }
+    };
+
+    runtime.block_on(async {
+        let service = StreamableHttpService::new(
+            || Ok(crate::mcp::SealchainServer::new()),
+            Arc::new(LocalSessionManager::default()),
+            StreamableHttpServerConfig::default(),
+        );
+        let app = axum::Router::new().nest_service("/mcp", service);
+
+        let listener = match tokio::net::TcpListener::bind(addr).await {
+            Ok(l) => l,
+            Err(e) => {
+                eprintln!("ERROR: bind MCP HTTP server on {addr}: {e}");
+                return EXIT_SCHEMA;
+            }
+        };
+        // Honest at-the-moment safety signal: a non-loopback bind exposes the
+        // unauthenticated seal/verify tools (file writes + optional network egress)
+        // beyond this host. The Host allowlist still blocks off-host clients, but
+        // warn so the operator does not lean on a doc caveat they may not have read.
+        if listener
+            .local_addr()
+            .map(|a| !a.ip().is_loopback())
+            .unwrap_or(false)
+        {
+            eprintln!(
+                "WARNING: MCP HTTP is bound to a non-loopback address ({addr}) with NO \
+                 authentication. Bind a loopback address, or front it with an authenticating \
+                 reverse proxy."
+            );
+        }
+        eprintln!("apohara-sealchain MCP streamable-HTTP server on http://{addr}/mcp");
+        if let Err(e) = axum::serve(listener, app).await {
+            eprintln!("ERROR: MCP HTTP server: {e}");
             return EXIT_FAIL;
         }
         EXIT_OK
@@ -508,6 +612,7 @@ fn run_seal(args: SealArgs) -> i32 {
         embed: args.embed,
         tsa,
         rekor,
+        ai_generated: args.ai_generated,
         network_requested,
         no_index: args.no_index,
         quiet: args.quiet,
@@ -587,6 +692,7 @@ struct SealConfig<'a> {
     embed: bool,
     tsa: Option<&'a str>,
     rekor: Option<&'a str>,
+    ai_generated: bool,
     network_requested: bool,
     no_index: bool,
     quiet: bool,
@@ -611,6 +717,7 @@ fn seal_one(
         cfg.embed,
         cfg.tsa,
         cfg.rekor,
+        cfg.ai_generated,
     ) {
         Ok(r) => r,
         Err(e) => {
@@ -955,7 +1062,10 @@ fn run_provenance(args: ProvenanceArgs) -> i32 {
         Err(code) => return code,
     };
 
-    let statement = provenance_statement(&record);
+    let statement = match args.format {
+        ProvenanceFormat::Apohara => provenance_statement(&record),
+        ProvenanceFormat::ModelSigning => model_signing_statement(&record),
+    };
     let rendered = if args.json {
         statement.to_string()
     } else {

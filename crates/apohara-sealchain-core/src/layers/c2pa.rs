@@ -204,15 +204,40 @@ fn build_signer_cert_pem(signer_key: &SigningKey) -> Result<String, SealError> {
     Ok(cert.pem())
 }
 
+/// The IPTC digital source type recorded for **AI-generated media** in the C2PA
+/// created action: `trainedAlgorithmicMedia` (C2PA 2.x / IPTC Digital Source
+/// Types). Pinned so the emitted label is stable and round-trip-testable; emitted
+/// only when the caller opts in via `ai_generated` (the `--ai-generated` flag).
+pub const AI_GENERATED_SOURCE_TYPE: &str =
+    "http://cv.iptc.org/newscodes/digitalsourcetype/trainedAlgorithmicMedia";
+
+/// The created-manifest digital source type for a seal: AI-generated media
+/// ([`AI_GENERATED_SOURCE_TYPE`]) when `ai_generated`, else `Empty` (no claim
+/// about how the content was produced — the honest default).
+#[cfg(feature = "native")]
+fn created_source_type(ai_generated: bool) -> DigitalSourceType {
+    if ai_generated {
+        DigitalSourceType::TrainedAlgorithmicMedia
+    } else {
+        DigitalSourceType::Empty
+    }
+}
+
 /// Emit a real C2PA sidecar manifest (JUMBF bytes) binding `payload`'s
 /// canonical hash, signed with the **seal's own Ed25519 key**.
 ///
 /// `signer_key` is the seal's Ed25519 [`SigningKey`]. The COSE signature is
 /// produced with that key via a [`CallbackSigner`], and the signing certificate
 /// is a self-signed cert carrying the same key's public part (see
-/// `build_signer_cert_pem`). The HMAC secret is never involved.
+/// `build_signer_cert_pem`). The HMAC secret is never involved. `ai_generated`
+/// records the created action's digital source type as AI-generated media
+/// ([`AI_GENERATED_SOURCE_TYPE`]) instead of `Empty`.
 #[cfg(feature = "native")]
-pub fn emit_sidecar(payload: &Value, signer_key: &SigningKey) -> Result<Vec<u8>, SealError> {
+pub fn emit_sidecar(
+    payload: &Value,
+    signer_key: &SigningKey,
+    ai_generated: bool,
+) -> Result<Vec<u8>, SealError> {
     let hash_hex = payload_hash_hex(payload)?;
     let assertion = json!({ "alg": "sha256", "hash": hash_hex });
 
@@ -221,9 +246,10 @@ pub fn emit_sidecar(payload: &Value, signer_key: &SigningKey) -> Result<Vec<u8>,
         .map_err(|e| SealError::C2pa(format!("context: {e}")))?;
 
     let mut builder = Builder::from_context(context);
-    // A standalone sidecar with no parent asset: a "created" manifest with an
-    // empty digital source (the placeholder asset is not the real subject).
-    builder.set_intent(BuilderIntent::Create(DigitalSourceType::Empty));
+    // A standalone sidecar with no parent asset: a "created" manifest. The digital
+    // source type is AI-generated media when the caller opts in, else empty (the
+    // placeholder asset is not the real subject).
+    builder.set_intent(BuilderIntent::Create(created_source_type(ai_generated)));
     // Sidecar mode: return the standalone manifest store, do not embed in media.
     builder.set_no_embed(true);
     builder
@@ -280,6 +306,7 @@ pub fn embed_manifest(
     media_bytes: &[u8],
     format: &str,
     signer_key: &SigningKey,
+    ai_generated: bool,
 ) -> Result<Vec<u8>, SealError> {
     let context = c2pa::Context::new()
         .with_settings(offline_settings()?)
@@ -287,8 +314,9 @@ pub fn embed_manifest(
 
     let mut builder = Builder::from_context(context);
     // A manifest created for this asset; c2pa adds its own data-hash hard binding
-    // over the asset bytes (the integrity proof for the embedded file).
-    builder.set_intent(BuilderIntent::Create(DigitalSourceType::Empty));
+    // over the asset bytes (the integrity proof for the embedded file). The digital
+    // source type is AI-generated media when the caller opts in, else empty.
+    builder.set_intent(BuilderIntent::Create(created_source_type(ai_generated)));
     // Embed mode: write the manifest into the output asset stream.
     builder.set_no_embed(false);
 
@@ -377,7 +405,11 @@ fn spki_ed25519_from_cert_pem(cert_chain_pem: &str) -> Option<Vec<u8>> {
         return None;
     }
     let (_, cert) = x509_parser::certificate::X509Certificate::from_der(pem.contents()).ok()?;
-    Some(cert.public_key().subject_public_key.data.as_ref().to_vec())
+    // `subject_public_key.data` is a `Cow<'_, [u8]>`; bind the borrow to `&[u8]`
+    // explicitly so `as_ref` is unambiguous (a transitive dep — typed_path — adds a
+    // second `AsRef` impl on `Cow<[u8]>` in scope, which otherwise trips E0283).
+    let spki: &[u8] = cert.public_key().subject_public_key.data.as_ref();
+    Some(spki.to_vec())
 }
 
 /// Parse `manifest_bytes` with the real `c2pa::Reader`, require the manifest to
@@ -444,7 +476,7 @@ mod tests {
         let key = SigningKey::generate(&mut OsRng);
         let payload = sample_payload();
 
-        let jumbf = emit_sidecar(&payload, &key).expect("emit");
+        let jumbf = emit_sidecar(&payload, &key, false).expect("emit");
         let expected = payload_hash_hex(&payload).expect("hash");
 
         // The manifest is REAL JUMBF: the Reader parses it and it is Valid.
@@ -458,7 +490,7 @@ mod tests {
     fn manifest_is_real_jumbf_reader_parses_valid() {
         let key = SigningKey::generate(&mut OsRng);
         let payload = sample_payload();
-        let jumbf = emit_sidecar(&payload, &key).expect("emit");
+        let jumbf = emit_sidecar(&payload, &key, false).expect("emit");
 
         let context = c2pa::Context::new()
             .with_settings(offline_settings().unwrap())
@@ -482,7 +514,7 @@ mod tests {
     fn wrong_expected_hash_returns_false() {
         let key = SigningKey::generate(&mut OsRng);
         let payload = sample_payload();
-        let jumbf = emit_sidecar(&payload, &key).expect("emit");
+        let jumbf = emit_sidecar(&payload, &key, false).expect("emit");
 
         let wrong = "00".repeat(32);
         assert!(
@@ -495,7 +527,7 @@ mod tests {
     fn case_insensitive_hash_match() {
         let key = SigningKey::generate(&mut OsRng);
         let payload = sample_payload();
-        let jumbf = emit_sidecar(&payload, &key).expect("emit");
+        let jumbf = emit_sidecar(&payload, &key, false).expect("emit");
 
         let expected = payload_hash_hex(&payload).expect("hash").to_uppercase();
         assert!(
@@ -521,7 +553,7 @@ mod tests {
 
         let key = SigningKey::generate(&mut OsRng);
         let payload = sample_payload();
-        let jumbf = emit_sidecar(&payload, &key).expect("emit");
+        let jumbf = emit_sidecar(&payload, &key, false).expect("emit");
 
         // 1. The manifest must reach Valid (well-formed + signature integrity).
         let context = c2pa::Context::new()
@@ -551,13 +583,88 @@ mod tests {
         assert_eq!(pem.tag(), "CERTIFICATE", "cert chain must be a CERTIFICATE");
         let (_, cert) =
             x509_parser::certificate::X509Certificate::from_der(pem.contents()).expect("parse DER");
-        let spki_pubkey = cert.public_key().subject_public_key.data.as_ref();
+        let spki_pubkey: &[u8] = cert.public_key().subject_public_key.data.as_ref();
 
         let seal_pubkey = key.verifying_key();
         assert_eq!(
             spki_pubkey,
             seal_pubkey.as_bytes(),
             "the signing cert's SPKI public key must equal the seal's Ed25519 public key"
+        );
+    }
+
+    /// A minimal valid 1x1 RGBA PNG (c2pa-embeddable), mirroring the artifact-test
+    /// fixture — enough for c2pa-rs to embed a manifest.
+    fn tiny_png() -> Vec<u8> {
+        vec![
+            137, 80, 78, 71, 13, 10, 26, 10, 0, 0, 0, 13, 73, 72, 68, 82, 0, 0, 0, 1, 0, 0, 0, 1,
+            8, 6, 0, 0, 0, 31, 21, 196, 137, 0, 0, 0, 13, 73, 68, 65, 84, 120, 156, 99, 248, 207,
+            192, 240, 31, 0, 5, 0, 1, 255, 137, 153, 61, 29, 0, 0, 0, 0, 73, 69, 78, 68, 174, 66,
+            96, 130,
+        ]
+    }
+
+    /// Read a standalone sidecar JUMBF back and return its manifest-store JSON.
+    fn sidecar_manifest_json(jumbf: &[u8]) -> String {
+        let context = c2pa::Context::new()
+            .with_settings(offline_settings().unwrap())
+            .unwrap();
+        let mut source = std::io::Cursor::new(SIDECAR_ASSET);
+        Reader::from_context(context)
+            .with_manifest_data_and_stream(jumbf, SIDECAR_FORMAT, &mut source)
+            .expect("reader parses JUMBF")
+            .json()
+    }
+
+    /// Read an in-file embedded manifest back and return its manifest-store JSON.
+    fn embedded_manifest_json(media: &[u8], format: &str) -> String {
+        let context = c2pa::Context::new()
+            .with_settings(offline_settings().unwrap())
+            .unwrap();
+        let mut source = std::io::Cursor::new(media);
+        Reader::from_context(context)
+            .with_stream(format, &mut source)
+            .expect("reader parses embedded manifest")
+            .json()
+    }
+
+    /// B-3: `ai_generated` records the IPTC trainedAlgorithmicMedia source type in
+    /// the SIDECAR manifest; the default does not claim AI-generated.
+    #[test]
+    fn ai_generated_records_trained_algorithmic_media_sidecar() {
+        let key = SigningKey::generate(&mut OsRng);
+        let payload = sample_payload();
+
+        let ai = emit_sidecar(&payload, &key, true).expect("emit ai");
+        assert!(
+            sidecar_manifest_json(&ai).contains(AI_GENERATED_SOURCE_TYPE),
+            "ai_generated sidecar must record the trainedAlgorithmicMedia source type"
+        );
+
+        let plain = emit_sidecar(&payload, &key, false).expect("emit plain");
+        assert!(
+            !sidecar_manifest_json(&plain).contains(AI_GENERATED_SOURCE_TYPE),
+            "default sidecar must NOT claim AI-generated"
+        );
+    }
+
+    /// B-3: the same holds for the EMBEDDED (in-file) manifest — the anti-circularity
+    /// exclusion of the payload-hash assertion does not apply to the AI source type,
+    /// so it is present in both modes.
+    #[test]
+    fn ai_generated_records_trained_algorithmic_media_embedded() {
+        let key = SigningKey::generate(&mut OsRng);
+
+        let ai = embed_manifest(&tiny_png(), "png", &key, true).expect("embed ai");
+        assert!(
+            embedded_manifest_json(&ai, "png").contains(AI_GENERATED_SOURCE_TYPE),
+            "ai_generated embedded must record the trainedAlgorithmicMedia source type"
+        );
+
+        let plain = embed_manifest(&tiny_png(), "png", &key, false).expect("embed plain");
+        assert!(
+            !embedded_manifest_json(&plain, "png").contains(AI_GENERATED_SOURCE_TYPE),
+            "default embedded must NOT claim AI-generated"
         );
     }
 }

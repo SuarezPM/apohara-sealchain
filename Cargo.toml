@@ -3,7 +3,7 @@ resolver = "2"
 members = ["crates/apohara-sealchain-core", "crates/apohara-sealchain", "crates/sealchain-wasm"]
 
 [workspace.package]
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 # MSRV floor = the maximum declared rust-version across the full dependency
 # tree (probed via `cargo metadata`). Set by c2pa 0.85 (1.88.0); time,

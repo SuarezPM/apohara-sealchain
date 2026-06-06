@@ -1,0 +1,139 @@
+name: huggingface-seal
+description: >-
+  Seal a HuggingFace model file with apohara-sealchain and attach the
+  tamper-evident `<file>.seal.json` receipt to the model repo. Always seals AND
+  verifies locally first; the upload to the Hub only runs when an `hf_token` is
+  provided (otherwise it is a dry-run that proves the receipt without publishing).
+
+inputs:
+  model_path:
+    description: Path to the model file to seal (e.g. a checkpoint or safetensors).
+    required: true
+  repo_id:
+    description: >-
+      Target HuggingFace repo id (e.g. `your-org/your-model`) to upload the
+      receipt to. Only used when `hf_token` is set.
+    required: false
+    default: ""
+  hf_token:
+    description: >-
+      HuggingFace write token. When omitted (the default), the action is a
+      DRY-RUN: it seals and verifies the receipt locally and does NOT upload to
+      the Hub. Provide a token (e.g. `${{ secrets.HF_TOKEN }}`) to upload.
+    required: false
+    default: ""
+  path_in_repo:
+    description: >-
+      Destination path of the receipt inside the model repo. Defaults to the
+      receipt's basename at the repo root.
+    required: false
+    default: ""
+  args:
+    description: >-
+      Extra flags passed verbatim to `apohara-sealchain seal` (e.g. `--all`,
+      `--ai-generated`, `--tsa`, `--rekor`). `--all`/`--tsa`/`--rekor` need
+      network at seal time; the default seal is fully offline.
+    required: false
+    default: ""
+  version:
+    description: Which apohara-sealchain release to use (`latest` or a tag like `v0.1.0`).
+    required: false
+    default: latest
+
+outputs:
+  receipt:
+    description: Path to the produced `.seal.json` receipt.
+    value: ${{ steps.seal.outputs.receipt }}
+  uploaded:
+    description: "`true` if the receipt was uploaded to the Hub, `false` for a dry-run."
+    value: ${{ steps.upload.outputs.uploaded }}
+
+runs:
+  using: composite
+  steps:
+    - name: Acquire apohara-sealchain binary
+      shell: bash
+      env:
+        SEALCHAIN_VERSION: ${{ inputs.version }}
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        set -euo pipefail
+        if command -v apohara-sealchain >/dev/null 2>&1; then
+          echo "apohara-sealchain already on PATH: $(command -v apohara-sealchain)"
+          exit 0
+        fi
+        case "${RUNNER_OS}" in
+          Linux)   asset="apohara-sealchain-x86_64-unknown-linux-gnu"; bin="apohara-sealchain" ;;
+          macOS)   asset="apohara-sealchain-aarch64-apple-darwin";     bin="apohara-sealchain" ;;
+          Windows) asset="apohara-sealchain-x86_64-pc-windows-msvc.exe"; bin="apohara-sealchain.exe" ;;
+          *) echo "::error::unsupported runner OS: ${RUNNER_OS}"; exit 1 ;;
+        esac
+        repo="SuarezPM/apohara-sealchain"
+        dest="${RUNNER_TEMP}/apohara-sealchain-bin"
+        mkdir -p "${dest}"
+        if [ "${SEALCHAIN_VERSION}" = "latest" ]; then
+          gh release download --repo "${repo}" --pattern "${asset}" --dir "${dest}" --clobber
+        else
+          gh release download "${SEALCHAIN_VERSION}" --repo "${repo}" --pattern "${asset}" --dir "${dest}" --clobber
+        fi
+        mv "${dest}/${asset}" "${dest}/${bin}"
+        [ "${RUNNER_OS}" != "Windows" ] && chmod +x "${dest}/${bin}" || true
+        echo "${dest}" >> "${GITHUB_PATH}"
+
+    - name: Seal the model
+      id: seal
+      shell: bash
+      env:
+        MODEL_PATH: ${{ inputs.model_path }}
+        SEAL_ARGS: ${{ inputs.args }}
+      run: |
+        set -euo pipefail
+        if [ ! -e "${MODEL_PATH}" ]; then
+          echo "::error::model file not found: ${MODEL_PATH}"
+          exit 1
+        fi
+        receipt="${MODEL_PATH}.seal.json"
+        apohara-sealchain seal "${MODEL_PATH}" ${SEAL_ARGS}
+        if [ ! -f "${receipt}" ]; then
+          echo "::error::expected receipt not produced: ${receipt}"
+          exit 1
+        fi
+        echo "receipt=${receipt}" >> "${GITHUB_OUTPUT}"
+
+    - name: Verify the receipt locally (always, before any upload)
+      shell: bash
+      env:
+        MODEL_PATH: ${{ inputs.model_path }}
+        RECEIPT: ${{ steps.seal.outputs.receipt }}
+      run: |
+        set -euo pipefail
+        # Re-verify what we just sealed; a non-zero exit here aborts before upload.
+        apohara-sealchain verify "${MODEL_PATH}" "${RECEIPT}"
+
+    - name: Upload the receipt to the model repo (only with a token)
+      id: upload
+      shell: bash
+      env:
+        HF_TOKEN: ${{ inputs.hf_token }}
+        REPO_ID: ${{ inputs.repo_id }}
+        RECEIPT: ${{ steps.seal.outputs.receipt }}
+        PATH_IN_REPO: ${{ inputs.path_in_repo }}
+      run: |
+        set -euo pipefail
+        if [ -z "${HF_TOKEN}" ]; then
+          echo "uploaded=false" >> "${GITHUB_OUTPUT}"
+          echo "DRY-RUN: receipt sealed and verified locally; set hf_token (and repo_id) to upload to the Hub."
+          exit 0
+        fi
+        if [ -z "${REPO_ID}" ]; then
+          echo "::error::repo_id is required to upload (got an hf_token but no repo_id)"
+          exit 1
+        fi
+        dest="${PATH_IN_REPO}"
+        [ -z "${dest}" ] && dest="$(basename "${RECEIPT}")"
+        # huggingface_hub CLI; the user's runner provides Python + the package.
+        python -m pip install --quiet --upgrade "huggingface_hub[cli]"
+        HF_TOKEN="${HF_TOKEN}" huggingface-cli upload "${REPO_ID}" "${RECEIPT}" "${dest}" \
+          --repo-type model --commit-message "Add apohara-sealchain receipt for the model"
+        echo "uploaded=true" >> "${GITHUB_OUTPUT}"
+        echo "Uploaded ${RECEIPT} -> ${REPO_ID}:${dest}"
