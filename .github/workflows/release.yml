@@ -21,6 +21,12 @@ permissions:
   id-token: write
   attestations: write
 
+# Run all JavaScript actions on Node.js 24. Node 20 is deprecated on GitHub
+# runners and is forced to Node 24 by default on 2026-06-16; this opts in now
+# (covers attest-build-provenance, checkout, action-gh-release, setup-node).
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+
 jobs:
   build:
     name: build (${{ matrix.target }})
