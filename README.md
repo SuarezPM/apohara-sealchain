@@ -10,6 +10,7 @@
 [![Rust](https://img.shields.io/badge/rust-1.88%2B-orange?style=for-the-badge&logo=rust)](https://www.rust-lang.org)
 [![MCP](https://img.shields.io/badge/MCP-stdio%20%2B%20http-success?style=for-the-badge)](https://modelcontextprotocol.io)
 [![OpenSSF Scorecard](https://img.shields.io/ossf-scorecard/github.com/SuarezPM/apohara-sealchain?style=for-the-badge&label=OpenSSF%20Scorecard)](https://scorecard.dev/viewer/?uri=github.com/SuarezPM/apohara-sealchain)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/13119/badge)](https://www.bestpractices.dev/projects/13119)
 
 **[Quick Start](#-quick-start)** · **[The five layers](#-the-five-layers)** · **[Trust profile](#-trust-profile)** · **[How it works / honesty](#-how-it-works--honesty)**
 
@@ -226,7 +227,7 @@ apohara-sealchain/
 
 ## 🛡️ Security
 
-Found a vulnerability? Please report it **privately** via [GitHub Security Advisories](https://github.com/SuarezPM/apohara-sealchain/security/advisories/new) — see [`SECURITY.md`](SECURITY.md) for the disclosure process, supported versions, and the **threat model** (what each layer protects and what it deliberately does not).
+Found a vulnerability? Please report it **privately** via [GitHub Security Advisories](https://github.com/SuarezPM/apohara-sealchain/security/advisories/new) — see [`SECURITY.md`](SECURITY.md) for the disclosure process, supported versions, and the **threat model** (what each layer protects and what it deliberately does not). The full **assurance case** (security requirements, trust boundaries, secure-design argument, and how common weaknesses are countered) is in [`docs/ASSURANCE.md`](docs/ASSURANCE.md).
 
 ---
 
@@ -239,7 +240,11 @@ Contributions are welcome.
 3. Make your change and run the gate: `cargo test --workspace` (plus `cargo clippy --workspace --all-targets` and `cargo fmt --check`).
 4. Open a **pull request**.
 
-See [`CONTRIBUTING.md`](CONTRIBUTING.md) for details.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the build/test/quality gate, coding
+standards, and the testing policy. By participating you agree to the
+[`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md) (Contributor Covenant 3.0). How the
+project is governed — roles, decision-making, and access continuity — is in
+[`GOVERNANCE.md`](GOVERNANCE.md).
 
 > Unless you state otherwise, any contribution you intentionally submit for inclusion in this work, as defined in the Apache-2.0 license, shall be dual-licensed as below, without any additional terms or conditions.
 
