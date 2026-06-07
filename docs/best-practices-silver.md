@@ -17,6 +17,7 @@ holding recovery keys). Silver also requires the **Passing** badge first.
 | Criterion | Status | Evidence |
 |---|---|---|
 | `achieve_passing` | **Human action** | Complete the Passing questionnaire on bestpractices.dev. The repo satisfies it (FLOSS MIT/Apache, public git, SemVer tags, build+test CI, SECURITY.md, signed releases, static analysis). |
+| `license_location` (Passing) | Met | Top-level [`LICENSE`](../LICENSE) file (dual MIT OR Apache-2.0, SPDX id, pointing to `LICENSE-MIT` / `LICENSE-APACHE` / `NOTICE`). **Note:** bestpractices.dev's auto-scanner only recognizes a top-level `LICENSE`/`COPYING` (± `.txt`/`.md`); the hyphenated Rust-convention files `LICENSE-MIT`/`LICENSE-APACHE` are *not* matched by its regex, which is why a plain `LICENSE` file is required for the criterion to stay "Met". URL for the form: `https://github.com/SuarezPM/apohara-sealchain/blob/main/LICENSE`. |
 
 ## Basics
 | Criterion | Status | Evidence |
