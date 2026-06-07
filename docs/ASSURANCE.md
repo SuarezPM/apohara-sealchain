@@ -112,8 +112,10 @@ qualification** of the default timestamp (not eIDAS-qualified), and
   (RUSTSEC) run in CI; documented, reviewed exceptions only.
 - **Static analysis.** `clippy` with `-D warnings` on every change.
 - **Honesty gate.** A CI check forbids over-claiming the provenance level
-  (`provenance-honesty`): the literal "SLSA Build L3" may not appear without
-  recorded verification evidence.
+  (`provenance-honesty`): the unverified top-tier ("L3") SLSA build-provenance
+  claim may not appear in the README or docs without recorded verification
+  evidence (`docs/SLSA-L3-EVIDENCE.md`); until then the honest "build
+  provenance (L2+)" wording is used.
 
 ## 5. Residual risk (honest)
 
