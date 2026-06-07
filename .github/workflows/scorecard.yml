@@ -15,11 +15,14 @@ on:
 # Least privilege: only what scorecard needs to read the repo and publish results.
 permissions: read-all
 
-# Run all JavaScript actions on Node.js 24. Node 20 is deprecated on GitHub
-# runners and is forced to Node 24 by default on 2026-06-16; this opts in now and
-# becomes a harmless no-op once Node 24 is the default.
-env:
-  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
+# NOTE: this workflow intentionally has NO top-level `env:`/`defaults:` and no
+# job-level `env:`. The OpenSSF Scorecard API rejects published results from a
+# workflow that defines them (scorecard-action "Workflow Restrictions" /
+# scorecard-webapp post_results.go) with HTTP 400, which fails the run. To still
+# run on Node.js 24 (Node 20 is deprecated on GitHub runners) we bump the JS
+# actions to node24-native versions (checkout@v5) instead of setting
+# FORCE_JAVASCRIPT_ACTIONS_TO_NODE24. ci.yml / release.yml are unaffected by this
+# restriction and keep that env var.
 
 jobs:
   analysis:
@@ -30,7 +33,7 @@ jobs:
       id-token: write # publish results to the OpenSSF API (keyless)
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5 # node24-native (v5.0.0); avoids the Node 20 deprecation without a global env
         with:
           persist-credentials: false
 
