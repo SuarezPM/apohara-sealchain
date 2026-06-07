@@ -1,0 +1,35 @@
+# cargo-fuzz / ClusterFuzzLite harness for apohara-sealchain.
+#
+# Intentionally OUTSIDE the workspace (see root Cargo.toml `exclude`): it is
+# nightly-only (libfuzzer-sys). Build/run with `cargo +nightly fuzz <build|run>
+# verify_receipt`, or via ClusterFuzzLite in CI (.clusterfuzzlite/).
+[package]
+name = "apohara-sealchain-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+serde_json = "1"
+
+# Fuzz the OFFLINE, untrusted-input surface only (verify path): no network/OS
+# deps, matching the verify-only contract the wasm verifier uses.
+[dependencies.apohara-sealchain-core]
+path = "../crates/apohara-sealchain-core"
+default-features = false
+features = ["verify-only"]
+
+[[bin]]
+name = "verify_receipt"
+path = "fuzz_targets/verify_receipt.rs"
+test = false
+doc = false
+bench = false
+
+# cargo-fuzz needs a release profile with debug info for useful crash traces.
+[profile.release]
+debug = 1

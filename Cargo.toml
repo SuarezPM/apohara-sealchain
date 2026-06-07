@@ -1,6 +1,10 @@
 [workspace]
 resolver = "2"
 members = ["crates/apohara-sealchain-core", "crates/apohara-sealchain", "crates/sealchain-wasm"]
+# The cargo-fuzz crate is nightly-only (libfuzzer-sys) and must never be pulled
+# into `cargo {check,test} --workspace` (e.g. the MSRV job). Keep it out of the
+# workspace; it builds via `cargo fuzz` / ClusterFuzzLite only.
+exclude = ["fuzz"]
 
 [workspace.package]
 version = "0.2.0"
