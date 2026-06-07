@@ -86,7 +86,7 @@ x509-parser = { version = "0.18", optional = true }
 mime_guess = { workspace = true, optional = true }
 # `SignatureBytes` is the input type for the TSA client's `timestamp_signature`;
 # sigstore-tsa does not re-export it, so it is needed directly.
-sigstore-types = { version = "0.6.6", optional = true }
+sigstore-types = { version = "0.8.0", optional = true }
 sigstore-tsa = { version = "0.6.6", optional = true }
 # The sigstore-tsa client is async (reqwest). The core is sync, so a private
 # current-thread runtime drives the one network call without leaking async/tokio
