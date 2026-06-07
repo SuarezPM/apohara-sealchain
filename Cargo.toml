@@ -37,7 +37,7 @@ mime_guess = "2"
 # from the passphrase, XChaCha20-Poly1305 AEADs the private material. Both are
 # pure-Rust RustCrypto crates (no openssl), and a wrong passphrase returns a
 # decrypt `Err` (auth-tag mismatch) rather than panicking.
-scrypt = { version = "0.11", default-features = false }
+scrypt = { version = "0.12", default-features = false }
 chacha20poly1305 = { version = "0.10", default-features = false, features = ["alloc", "getrandom"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 # Local receipt index (native only). `bundled` compiles SQLite from source so no
