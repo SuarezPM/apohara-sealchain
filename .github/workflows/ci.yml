@@ -7,15 +7,23 @@
 # NOTE: the interop test (`tests/interop.rs`) is marked `#[ignore]` because it
 # needs the local probanza Python venv. It is intentionally NOT run in CI and is
 # local-only; `cargo test --workspace` skips ignored tests automatically.
+#
+# Third-party actions are pinned to a full commit SHA (Scorecard Pinned-Dependencies)
+# with the human-readable version in a trailing comment; Dependabot (.github/
+# dependabot.yml) bumps both. `dtolnay/rust-toolchain` selects the toolchain via
+# the `toolchain:` input because a SHA pin cannot carry the `@stable`/`@1.88` ref.
 name: ci
 
 on:
   push:
   pull_request:
 
-# Run all JavaScript actions on Node.js 24. Node 20 is deprecated on GitHub
-# runners and is forced to Node 24 by default on 2026-06-16; this opts in now and
-# becomes a harmless no-op once Node 24 is the default.
+# Least privilege (Scorecard Token-Permissions): read-only by default; no CI job
+# needs write. Run all JS actions on Node.js 24 (Node 20 is deprecated on GitHub
+# runners; forced to Node 24 by default on 2026-06-16 — this opts in early).
+permissions:
+  contents: read
+
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -28,15 +36,16 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
         with:
+          toolchain: stable
           components: clippy, rustfmt
 
       - name: Cache cargo artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
 
       - name: Check formatting
         run: cargo fmt --all -- --check
@@ -53,11 +62,11 @@ jobs:
     name: secrets (gitleaks)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
         with:
           fetch-depth: 0
       - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
+        uses: gitleaks/gitleaks-action@ff98106e4c7b2bc287b24eaf42907196329070c7 # v2.3.9
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # Uses the repo's .gitleaks.toml.
@@ -75,9 +84,11 @@ jobs:
     name: verify offline isolation (no network deps)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: stable
       - name: Assert the verify-only build links no network client
         run: |
           tree="$(cargo tree -p apohara-sealchain-core --no-default-features --features verify-only -e normal)"
@@ -92,9 +103,9 @@ jobs:
     name: deny (cargo-deny)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Run cargo-deny
-        uses: EmbarkStudios/cargo-deny-action@v2
+        uses: EmbarkStudios/cargo-deny-action@bb137d7af7e4fb67e5f82a49c4fce4fad40782fe # v2.0.20
         with:
           # Uses the repo's deny.toml.
           command: check
@@ -105,16 +116,18 @@ jobs:
     name: msrv (1.88)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       # rust-toolchain.toml pins `stable` and would override the toolchain this
       # job installs, masking MSRV regressions. Remove it so the 1.88 toolchain
       # below is actually used.
       - name: Drop pinned toolchain override
         run: rm -f rust-toolchain.toml
       - name: Install MSRV toolchain
-        uses: dtolnay/rust-toolchain@1.88
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: "1.88"
       - name: Cache cargo artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - name: cargo check (workspace) on MSRV
         run: cargo check --workspace --all-targets
 
@@ -125,11 +138,13 @@ jobs:
     name: audit (cargo-audit)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: stable
       - name: Cache cargo artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - name: Install cargo-audit
         run: cargo install cargo-audit --locked
       - name: Run cargo audit
@@ -148,7 +163,7 @@ jobs:
     name: provenance honesty (no unverified L3 claim)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Forbid an unverified "SLSA Build L3" claim
         run: |
           if grep -rqF "SLSA Build L3" README.md docs/ 2>/dev/null \
@@ -168,11 +183,13 @@ jobs:
     if: github.event_name == 'push'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: stable
       - name: Cache cargo artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
       - name: Build release binary
         run: cargo build --release -p apohara-sealchain
       - name: Run bench smoke (small N) and assert a table was produced

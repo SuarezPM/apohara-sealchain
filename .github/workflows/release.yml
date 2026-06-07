@@ -6,6 +6,9 @@
 # Triggered on a `v*` tag. Per-OS it builds the release binary for the matching
 # target triple and uploads it as a GitHub Release asset. The npx wrapper
 # (npx/install.js) downloads these assets by platform/arch.
+#
+# Third-party actions are pinned to a full commit SHA (Scorecard Pinned-Dependencies)
+# with the human-readable version in a trailing comment; Dependabot bumps both.
 name: release
 
 on:
@@ -13,17 +16,11 @@ on:
     tags:
       - "v*"
 
-# `attestations: write` + `id-token: write` let the build job mint a SLSA build
-# provenance attestation per asset via Sigstore keyless signing (OIDC). End users
-# verify with `gh attestation verify <asset> --repo SuarezPM/apohara-sealchain`.
+# Least privilege (Scorecard Token-Permissions): read-only at the top level; the
+# write scopes a release needs are granted only to the `build` job below.
 permissions:
-  contents: write
-  id-token: write
-  attestations: write
+  contents: read
 
-# Run all JavaScript actions on Node.js 24. Node 20 is deprecated on GitHub
-# runners and is forced to Node 24 by default on 2026-06-16; this opts in now
-# (covers attest-build-provenance, checkout, action-gh-release, setup-node).
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -31,6 +28,14 @@ jobs:
   build:
     name: build (${{ matrix.target }})
     runs-on: ${{ matrix.os }}
+    # `attestations: write` + `id-token: write` let this job mint a SLSA build
+    # provenance attestation per asset via Sigstore keyless signing (OIDC);
+    # `contents: write` lets it upload the release assets. End users verify with
+    # `gh attestation verify <asset> --repo SuarezPM/apohara-sealchain`.
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
     strategy:
       fail-fast: false
       matrix:
@@ -48,15 +53,16 @@ jobs:
             bin: apohara-sealchain.exe
             asset: apohara-sealchain-x86_64-pc-windows-msvc.exe
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
 
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
         with:
+          toolchain: stable
           targets: ${{ matrix.target }}
 
       - name: Cache cargo artifacts
-        uses: Swatinem/rust-cache@v2
+        uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2.9.1
 
       - name: Build release binary
         run: cargo build --release -p apohara-sealchain --target ${{ matrix.target }}
@@ -73,14 +79,25 @@ jobs:
       # attestation is bound to the asset's digest, so it covers exactly the bytes
       # uploaded below. Verify: gh attestation verify <asset> --repo SuarezPM/apohara-sealchain
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@v2
+        id: attest
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
         with:
           subject-path: ${{ matrix.asset }}
 
-      - name: Upload Release asset
-        uses: softprops/action-gh-release@v2
+      # Attach the Sigstore attestation bundle next to the binary so the signature
+      # travels with the release (Scorecard Signed-Releases recognizes
+      # *.sigstore.json among release assets), in addition to the GitHub
+      # attestations API used by `gh attestation verify`.
+      - name: Stage attestation bundle as a release asset
+        shell: bash
+        run: cp "${{ steps.attest.outputs.bundle-path }}" "${{ matrix.asset }}.sigstore.json"
+
+      - name: Upload Release assets
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2.6.2
         with:
-          files: ${{ matrix.asset }}
+          files: |
+            ${{ matrix.asset }}
+            ${{ matrix.asset }}.sigstore.json
           fail_on_unmatched_files: true
 
   # Publish the two library crates to crates.io. Runs after the binaries build so
@@ -91,10 +108,14 @@ jobs:
     name: publish to crates.io
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+        with:
+          toolchain: stable
       - name: Publish apohara-sealchain-core, then apohara-sealchain
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
@@ -120,9 +141,11 @@ jobs:
     name: publish npx wrapper to npm
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 20
           registry-url: https://registry.npmjs.org
