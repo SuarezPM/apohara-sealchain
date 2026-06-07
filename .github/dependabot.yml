@@ -1,0 +1,26 @@
+# Dependabot keeps dependencies current (Scorecard Dependency-Update-Tool) and,
+# for GitHub Actions, bumps the pinned commit SHAs together with their version
+# comments (so SHA-pinning does not freeze us on a stale, possibly vulnerable
+# action). Updates are grouped to keep PR noise low for a single maintainer.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      cargo-minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      github-actions:
+        patterns:
+          - "*"
