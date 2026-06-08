@@ -1,0 +1,15 @@
+# Same justified OSV exceptions as the root /osv-scanner.toml, but for THIS
+# directory's lockfile (fuzz/Cargo.lock). osv-scanner applies an osv-scanner.toml
+# only to the lockfile in the same directory (it does NOT recurse), and Scorecard
+# scans every lockfile — so the ignore must be repeated next to fuzz/Cargo.lock.
+# Both advisories are transitive via c2pa (pulled by the fuzz harness through
+# apohara-sealchain-core's verify-only feature) and are not exploitable here.
+# Keep in sync with /osv-scanner.toml; remove when c2pa updates upstream.
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2023-0071"
+reason = "rsa Marvin timing side channel — transitive via c2pa; no RSA private-key/decryption oracle is exposed (Ed25519 signing, offline C2PA verify only)."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0370"
+reason = "proc-macro-error unmaintained — build-time-only proc-macro pulled transitively by c2pa (via iref); not present at runtime, no attack surface."
