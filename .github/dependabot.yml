@@ -10,10 +10,33 @@ updates:
       interval: weekly
     open-pull-requests-limit: 10
     groups:
+      # The sigstore-* family must move together (matched versions) — group them
+      # into one PR instead of five.
+      sigstore:
+        patterns:
+          - "sigstore*"
       cargo-minor-and-patch:
+        patterns:
+          - "*"
         update-types:
           - minor
           - patch
+    ignore:
+      # RustCrypto digest 0.11 realignment: sha2 0.11 / hmac 0.13 / scrypt 0.12
+      # require digest 0.11, but c2pa and ed25519-dalek are still on digest 0.10,
+      # so these break the build. These are 0.x crates, so the breaking bump is a
+      # semver "minor"; hold the current line (patches still flow) and revisit
+      # when the c2pa/ed25519 stack moves to digest 0.11.
+      - dependency-name: "sha2"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "hmac"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      - dependency-name: "scrypt"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
+      # rusqlite 0.40 raises the required Rust above our MSRV floor (1.88, set by
+      # c2pa). Hold until the MSRV floor rises; patches on the current line flow.
+      - dependency-name: "rusqlite"
+        update-types: ["version-update:semver-minor", "version-update:semver-major"]
 
   - package-ecosystem: github-actions
     directory: "/"
