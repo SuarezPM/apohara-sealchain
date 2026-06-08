@@ -34,7 +34,6 @@
 //! inside [`request_token`]. No async/tokio types appear in this module's public
 //! API.
 
-use chrono::SecondsFormat;
 use sigstore_tsa::{verify_timestamp_response, Error as TsaError, TimestampClient, VerifyOpts};
 use sigstore_types::SignatureBytes;
 
@@ -110,7 +109,9 @@ pub fn request_token(to_stamp: &[u8], tsa_url: &str) -> Result<TsaToken, SealErr
     // issuance time from `TstInfo.genTime`.
     let result = verify_timestamp_response(&der, to_stamp, VerifyOpts::new())
         .map_err(|e| SealError::Tsa(format!("parse issued token: {e}")))?;
-    let issued_at = result.time.to_rfc3339_opts(SecondsFormat::Secs, true);
+    // sigstore-tsa 0.8 returns `result.time` as a `jiff::Timestamp` (was chrono).
+    // Format it as second-precision RFC 3339 in UTC to match the prior output.
+    let issued_at = result.time.strftime("%Y-%m-%dT%H:%M:%SZ").to_string();
 
     Ok(TsaToken {
         authority: authority_label(tsa_url),
