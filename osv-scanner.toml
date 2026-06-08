@@ -1,0 +1,23 @@
+# OSV ignore list, honored by the OpenSSF Scorecard "Vulnerabilities" check
+# (and osv-scanner). Both entries are TRANSITIVE via `c2pa` (the C2PA manifest
+# engine, which is core to this project and cannot be dropped) and are not
+# exploitable in apohara-sealchain's usage. They mirror the documented
+# exceptions in `deny.toml` and the `cargo audit --ignore` flags in CI. Remove
+# an entry once the upstream condition clears (a c2pa release that updates the
+# affected crate).
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2023-0071"
+# `rsa` (Marvin Attack: key recovery via a decryption-timing side channel),
+# pulled only by c2pa. The attack needs an RSA *private-key decryption oracle*
+# fed attacker-chosen ciphertexts. apohara-sealchain performs no RSA private-key
+# operations: it signs with Ed25519 and uses c2pa only for offline, public-key
+# manifest *verification*. No timing oracle is exposed.
+reason = "rsa Marvin timing side channel — transitive via c2pa; no RSA private-key/decryption oracle is exposed (Ed25519 signing, offline C2PA verify only)."
+
+[[IgnoredVulns]]
+id = "RUSTSEC-2024-0370"
+# `proc-macro-error` is unmaintained (a maintenance advisory, not an exploit).
+# It is a BUILD-TIME proc-macro only (c2pa -> static-iref -> iref ->
+# static-regular-grammar), absent from the shipped binary and runtime surface.
+reason = "proc-macro-error unmaintained — build-time-only proc-macro pulled transitively by c2pa (via iref); not present at runtime, no attack surface."
