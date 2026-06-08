@@ -10,6 +10,14 @@ description = "Offline in-browser receipt verifier for apohara-sealchain (wasm-b
 # Built locally to wasm32 for the static `web/` verifier; not a crates.io artifact.
 publish = false
 
+# The wasm-opt bundled by wasm-pack rejects the bulk-memory (and similar) features
+# modern rustc emits by default ("Bulk memory operations require bulk memory").
+# Skip the wasm-opt pass: the verifier wasm loads once and size is not critical,
+# and this keeps the GitHub Pages build (.github/workflows/pages.yml) reproducible
+# across toolchains instead of chasing wasm-opt feature flags.
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
 [lib]
 crate-type = ["cdylib", "rlib"]
 

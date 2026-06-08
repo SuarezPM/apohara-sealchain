@@ -5,6 +5,11 @@ A static, drag-and-drop web page that verifies a apohara-sealchain receipt
 No network: everything runs locally in WebAssembly compiled from
 `crates/sealchain-wasm`.
 
+**Hosted:** the verifier runs live at
+<https://suarezpm.github.io/apohara-sealchain/>, deployed from `web/` by
+[`.github/workflows/pages.yml`](../.github/workflows/pages.yml) (which builds the
+wasm with wasm-pack — the compiled `.wasm` is not committed).
+
 ## What is verified in the browser
 
 | Layer    | In-browser result | Why |
@@ -32,7 +37,9 @@ cargo install wasm-pack                     # once
 wasm-pack build crates/sealchain-wasm --target web --out-dir ../../web/pkg --release
 ```
 
-This regenerates `web/pkg/` (the `.wasm` binary, JS glue, and `.d.ts`).
+This generates `web/pkg/` (the `.wasm` binary, JS glue, and `.d.ts`). `web/pkg/`
+is **git-ignored**: it is build output, regenerated locally or by the Pages
+workflow, never committed (keeps the compiled `.wasm` out of the source repo).
 
 ## Serve
 

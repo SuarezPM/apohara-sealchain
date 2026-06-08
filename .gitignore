@@ -13,3 +13,9 @@ target/
 # Python (vector generator) caches
 __pycache__/
 *.pyc
+
+# In-browser verifier: wasm-pack output is generated, not committed. It is built
+# from crates/sealchain-wasm by .github/workflows/pages.yml and served from
+# GitHub Pages (keeps the compiled .wasm out of source — Scorecard
+# Binary-Artifacts). Build locally with the command in web/README.md.
+web/pkg/
