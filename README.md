@@ -70,6 +70,8 @@ The same binary speaks the [Model Context Protocol](https://modelcontextprotocol
 | 📜 **SLSA-style provenance** | `apohara-sealchain provenance` maps a receipt onto an in-toto Statement v1 for supply-chain tooling — honestly typed, never claiming SLSA *build* semantics. `--format model-signing` emits the model-transparency / OpenSSF Model Signing shape for ML-ecosystem interop. |
 | 🦀 **Honest by construction** | Pure Rust. `verify` is always offline. Every layer produces and re-checks real crypto, or the seal aborts — there is no faked pass anywhere in the tree. |
 | 🔏 **Signed releases** | Every release binary carries a SLSA **build provenance (L2+)** attestation (Sigstore keyless) — verify it with `gh attestation verify` before you run it. |
+| 🧪 **Continuously fuzzed** | [ClusterFuzzLite](https://google.github.io/clusterfuzzlite/) runs the `verify_receipt` harness on every push/PR and weekly; SAST via [CodeQL](https://codeql.github.com/); cargo deps + GitHub Actions auto-bumped by [Dependabot](https://github.com/SuarezPM/apohara-sealchain/pulls?q=is%3Apr+author%3Aapp%2Fdependabot). |
+| 🌐 **Live in-browser verifier** | The same offline WASM verifier is auto-built and deployed to GitHub Pages: **[suarezpm.github.io/apohara-sealchain](https://suarezpm.github.io/apohara-sealchain/)** — drag a file + receipt, no backend, no upload. |
 
 ---
 
@@ -204,8 +206,11 @@ apohara-sealchain/
 ├── sdk/{python,node}/       # thin SDKs over the binary
 ├── packaging/               # mcp.json · plugin.json · trust-profile.json · receipt schema
 ├── examples/                # HuggingFace seal-your-fine-tune · attestation policies
-├── docs/                    # SPEC, trust profile, positioning, publishing, key management
-└── .github/                 # CI, release workflow, seal-artifact Action
+├── docs/                    # SPEC, trust profile, positioning, publishing, key management, assurance case
+├── fuzz/                    # ClusterFuzzLite harness (verify_receipt target)
+├── .clusterfuzzlite/        # Dockerfile + build script for OSS-Fuzz Lite
+├── osv-scanner.toml         # OSV vulnerability scan policy
+└── .github/                 # CI, release, scorecard, pages, codeql, cflite, seal-artifact + huggingface-seal Actions
 ```
 
 ---
@@ -228,6 +233,17 @@ apohara-sealchain/
 ## 🛡️ Security
 
 Found a vulnerability? Please report it **privately** via [GitHub Security Advisories](https://github.com/SuarezPM/apohara-sealchain/security/advisories/new) — see [`SECURITY.md`](SECURITY.md) for the disclosure process, supported versions, and the **threat model** (what each layer protects and what it deliberately does not). The full **assurance case** (security requirements, trust boundaries, secure-design argument, and how common weaknesses are countered) is in [`docs/ASSURANCE.md`](docs/ASSURANCE.md).
+
+**Continuous supply-chain hardening, measured in the open.** The repository runs — and is graded by — the [OpenSSF Scorecard](https://scorecard.dev/viewer/?uri=github.com/SuarezPM/apohara-sealchain) on every push to `main` and weekly (`.github/workflows/scorecard.yml`). Live subscores on the current `main`:
+
+| | | | |
+|---|---|---|---|
+| Fuzzing **10** | Vulnerabilities **10** | Pinned-Dependencies **10** | Dangerous-Workflow **10** |
+| CI-Tests **10** | Binary-Artifacts **10** | Token-Permissions **10** | Security-Policy **10** |
+| Dependency-Update-Tool **10** | Packaging **10** | SAST **7** (CodeQL) | License **9** |
+| CII-Best-Practices **7** | Branch-Protection **3** | Contributors **3** | Signed-Releases 0 · Maintained 0 · Code-Review 0 |
+
+Honest gaps: release binaries carry SLSA **build provenance** (attestation verifiable with `gh attestation verify`) but are not `cosign sign-release`–style signed, so the Scorecard `Signed-Releases` check reads 0; `Maintained` and `Code-Review` reflect single-maintainer activity. Each is something to lift, not to paper over.
 
 ---
 
