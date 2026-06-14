@@ -76,7 +76,7 @@ base64 = "0.22"
 
 # --- native-only deps (pulled in by the `native` feature) ---
 # C2PA emit cert/key material (self-signed signer). Verify does not need them.
-rcgen = { version = "0.13", optional = true }
+rcgen = { version = "0.14", optional = true }
 pem = { version = "3", optional = true }
 # Parse the embedded manifest's signer cert to confirm its SPKI Ed25519 public
 # key equals the seal's public key (signer ≡ authorship) on the native verify
